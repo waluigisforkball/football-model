@@ -178,7 +178,7 @@ textarea.inp{height:300px;resize:vertical;line-height:1.55}
 
 <div class="hdr">
   <div class="hdr-top">
-    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.9</span>
+    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.11</span>
     <div class="wk"><button id="wPrev">‹</button><div class="lbl" id="wLbl">Week —</div><button id="wNext">›</button></div>
     <div class="spacer"></div>
     <button class="btn pull" id="bPull">↓ Pull odds</button>
@@ -291,7 +291,8 @@ function roleDefault(pos, key, st){
   const r = ROLE[pos] && ROLE[pos][key];
   if (!r) return (POS_DEF[pos] || {})[key];
   const sp = st ? st.snap_pct : null;
-  return (sp !== null && sp !== undefined && sp > 0) ? clamp(sp*r.per, r.floor, 0.85) : r.floor;
+  // Snaps known → trust them, even when they say "barely plays". Floor only without snaps.
+  return (sp !== null && sp !== undefined) ? clamp(sp*r.per, 0, 0.85) : r.floor;
 }
 /* Market definitions: how to project, and the shape of the outcome. */
 const MKT = {
@@ -411,9 +412,14 @@ function statVal(st, key, team, rates){
   return null;
 }
 
+const SHARE_KEYS = { carry_share:1, target_share:1 };
+
 /** Blended player rate: this season's window → last season → position default.
-    Both blends are weighted by opportunities (see PK), not games. */
-function playerRate(name, pos, key){
+    Both blends are weighted by opportunities (see PK), not games.
+    Returns { v, w }: w is the weight on this season's observed value — how much of
+    the number is evidence rather than prior. The usage book uses it to decide who
+    absorbs a budget cut. */
+function playerRateW(name, pos, key){
   const ix = playerIndex();
   const n = normName(name);
   const c = ix.cur.get(n), pr = ix.prior.get(n);
@@ -421,12 +427,29 @@ function playerRate(name, pos, key){
   const spec = PK[key] || { k:5, n:s => s.games || 0 };
   const cs = c && c[win] ? c[win] : null, ps = pr && pr.season ? pr.season : null;
   const cv = statVal(cs, key, c && c.team, S.rates);
-  const pv = statVal(ps, key, pr && pr.team, S.prior);
+  let pv = statVal(ps, key, pr && pr.team, S.prior);
+
+  /* Role change. Last year's share only carries over if the role did: scale it by
+     this season's snap share over last season's. A back who went from 55% of snaps
+     to 3% doesn't keep a 40% carry-share prior. */
+  if (SHARE_KEYS[key] && pv !== null && pv !== undefined && pos !== 'QB') {
+    // Max recent snap share, not the average: one game he left early (Barkley, 16% in
+    // Week 2 after 71%) isn't a demotion. A real one (3% and 2%) still shows.
+    const sNow = cs ? (cs.snap_max ?? cs.snap_pct) : null, sThen = ps ? ps.snap_pct : null;
+    if (sNow !== null && sNow !== undefined && sThen)
+      pv = pv * clamp(sNow / sThen, 0.05, 2);
+  }
   const priorV = (pv !== null && pv !== undefined)
     ? blendPrior(pv, spec.n(ps), roleDefault(pos, key, ps), spec.k)
     : roleDefault(pos, key, cs);
-  return blendPrior(cv, cs ? spec.n(cs) : 0, priorV, spec.k);
+  const nObs = cs && cv !== null && cv !== undefined ? spec.n(cs) : 0;
+  const w = priorV === null || priorV === undefined ? (nObs ? 1 : 0) : nObs / (nObs + spec.k);
+  // How much real history backs the prior: a full prior season ≈ 0.85, a snap-based guess 0.
+  const nPr = ps && pv !== null && pv !== undefined ? spec.n(ps) : 0;
+  const wp = nPr / (nPr + spec.k);
+  return { v: blendPrior(cv, nObs, priorV, spec.k), w, wp, obs: nObs ? cv : null };
 }
+function playerRate(name, pos, key){ return playerRateW(name, pos, key).v; }
 
 function playerMeta(name){
   const ix = playerIndex();
@@ -544,6 +567,9 @@ const MIN_VOL = { player_pass_yds:120, player_rush_yds:15, player_reception_yds:
 /* inactive-roster players removed, their usage handed to teammates, and    */
 /* the room capped at what the team actually has.                           */
 /* ===================================================================== */
+/* How much a full prior season protects a share from the budget cut (0 = not at all,
+   1 = fully). Chosen by scoring against real posted lines, not by eye. */
+const CAP_PRIOR_DISCOUNT = 0.5;
 const OUT_RE = /^(out|doubtful)/i;
 const INACTIVE = { RES:'on IR/reserve', INA:'inactive', CUT:'released', EXE:'exempt',
                    RET:'retired', DEV:'on the practice squad', SUS:'suspended', PUP:'on PUP', NFI:'on NFI' };
@@ -591,13 +617,14 @@ function usageBook(team){
     const qb = m.pos === 'QB';
     const r = { key:n, name:m.name, pos:m.pos, returning:m.returning,
                 active:av.active, why:av.why, questionable:av.questionable,
-                raw:{
-                  carry_share:  playerRate(m.name, m.pos, 'carry_share') || 0,
-                  target_share: qb ? 0 : (playerRate(m.name, m.pos, 'target_share') || 0),
-                  att_share:    qb ? (playerRate(m.name, 'QB', 'att_share') || 0) : 0,
-                },
+                raw:{}, wt:{}, wp:{}, obs:{},
                 final:{ carry_share:0, target_share:0, att_share:0 },
                 gain:{ carry_share:[], target_share:[], att_share:[] } };
+    for (const k of ['carry_share','target_share','att_share']) {
+      const skip = (k === 'target_share' && qb) || (k === 'att_share' && !qb);
+      const x = skip ? { v:0, w:1 } : playerRateW(m.name, m.pos, k);
+      r.raw[k] = x.v || 0; r.wt[k] = x.w; r.wp[k] = x.wp || 0; r.obs[k] = x.obs === undefined ? null : x.obs;
+    }
     rows.push(r); byKey.set(n, r);
   }
 
@@ -619,10 +646,34 @@ function usageBook(team){
       });
     }
     const sum = act.reduce((a,r) => a + r.final[k], 0);
-    const scale = (sum > budget || (allowUp && sum > 0)) ? budget / sum : 1;
-    for (const r of act) { r.final[k] *= scale; for (const x of r.gain[k]) x.add *= scale; }
+    let scale = 1;
+    const resize = (r, to) => { const f = r.final[k] ? to / r.final[k] : 1; r.final[k] = to; for (const x of r.gain[k]) x.add *= f; };
+    if (sum > budget) {
+      /* Overfull room. Stage 1: take the excess from projected usage the player
+         hasn't actually shown — his own share above his observed share this season
+         (a backup projected at 20% on zero carries). A starter projected at what
+         he's doing loses nothing here. The gap is discounted by how much real history
+         backs it: Chase's 32% from a full 2025 isn't erased by two games at 20%, but a
+         snap-based guess with no history is. Players with no games this window
+         (returning) are protected; their prior is all we have.
+         Stage 2: if that doesn't cover it, scale everyone proportionally. */
+      let excess = sum - budget;
+      const cap = act.map(r => r.obs[k] === null ? 0 : Math.max(0, r.raw[k] - r.obs[k]) * (1 - CAP_PRIOR_DISCOUNT * (r.wp[k] || 0)));
+      const C = cap.reduce((a,b) => a+b, 0);
+      const take = Math.min(excess, C);
+      if (take > 0) act.forEach((r,i) => resize(r, r.final[k] - take * cap[i] / C));
+      excess -= take;
+      if (excess > 1e-9) {
+        const left = sum - take;
+        scale = budget / left;
+        for (const r of act) resize(r, r.final[k] * scale);
+      }
+    } else if (allowUp && sum > 0) {
+      scale = budget / sum;
+      for (const r of act) { r.final[k] *= scale; for (const x of r.gain[k]) x.add *= scale; }
+    }
     for (const r of gone) r.final[k] = 0;
-    return { sum, budget, scale, vacated };
+    return { sum, budget, scale, vacated, trimmed: sum > budget };
   };
 
   // QB scrambles come out of the carry budget; the starter's rushing share sets it.
@@ -829,6 +880,7 @@ function edgeBadges(pr, g, pj, best, dv){
   if (opp < 8) b.push(['warn', `${Math.round(opp)} opp`]);
   if ((m.weeks_played || 0) < 2) b.push(['warn','1 game']);
   if (m.snap_drift !== null && Math.abs(m.snap_drift) > 0.15) b.push(['warn','role']);
+  if (st && st.short_games) b.push(['warn','short game']);
   const u = pj.usage;
   if (u && u.me.questionable) b.push(['bad','⚠ questionable']);
   if (u && u.me.returning) b.push(['warn','returning']);
@@ -885,8 +937,13 @@ function whyFactors(e){
     for (const x of u.me.gain[k])
       used.push(['up', `+${pct(x.add)} ${lbl} share from ${x.pos} ${x.from} (${x.why})`]);
     const al = u.book.alloc[k];
-    if (al.scale < 0.98)
-      used.push(['down', `${side.team}'s ${k === 'att_share' ? 'QBs' : 'skill players'} added up to ${pct(al.sum)} of the ${lbl}s — every share scaled ${R(al.scale,2)}× to fit`]);
+    if (al.trimmed) {
+      const before = u.me.raw[k] + u.me.gain[k].reduce((a,x) => a + x.add, 0);
+      const cut = before - u.me.final[k];
+      used.push(['down', `${side.team}'s ${k === 'att_share' ? 'QBs' : 'skill players'} added up to ${pct(al.sum)} of the ${lbl}s against room for ${pct(al.budget)}`
+        + (cut >= 0.002 ? ` — trimmed ${pct(cut)} from him. Cuts come first from usage projected above what a player has actually shown this season${u.me.obs[k]!==null?` (his actual: ${pct(u.me.obs[k])})`:''}`
+                        : ` — the cut came from teammates projected above their actual usage, not him`)]);
+    }
     else if (al.scale > 1.02)
       used.push(['up', `${side.team}'s QBs only covered ${pct(al.sum)} of attempts — scaled up to ${pct(al.budget)}`]);
     if (Math.abs(u.me.final[k] - u.me.raw[k]) >= 0.001)
@@ -932,6 +989,10 @@ function whyFactors(e){
                            && normName(i.name) !== normName(pr.player));
   for (const m of mates.slice(0,5))
     context.push(['flat', `Teammate ${m.position} ${m.name} is questionable${m.injury?' ('+m.injury+')':''} — modeled as playing; if he sits, his usage moves`]);
+  const stw = pj.meta[S.lastn >= 99 ? 'season' : 'last'] || pj.meta.season;
+  if (stw && stw.short_games)
+    context.push(['up', `${stw.short_games} game${stw.short_games>1?'s':''} in this window at under half his best snap share `
+      + `(${Math.round((stw.snap_max||0)*100)}%) — likely left early. His usage rates are dragged down by it; the role prior isn't`]);
   if (pj.usage && pj.usage.me.returning)
     context.push(['flat', `No snaps this season yet — the market may know his workload is limited on return`]);
 
@@ -1485,6 +1546,7 @@ $('bRun').onclick = () => showModal(`<h2>Rundown — Week ${S.week}</h2>
   <textarea class="inp" id="rdText" readonly>${rundown()}</textarea>
   <div style="display:flex;gap:8px;margin-top:10px">
     <button class="btn on" onclick="navigator.clipboard.writeText(document.getElementById('rdText').value)">⧉ Copy</button>
+    <button class="btn" onclick="exportProps()" ${S.props.length?'':'disabled'}>⤓ Props JSON</button>
     <button class="btn" onclick="closeModal()">Close</button></div>`);
 
 $('bSet').onclick = () => showModal(`<h2>Settings</h2>
@@ -1495,6 +1557,15 @@ $('bSet').onclick = () => showModal(`<h2>Settings</h2>
   <div style="display:flex;gap:8px;margin-top:12px">
     <button class="btn on" onclick="saveWorker()">Save & reload</button>
     <button class="btn" onclick="closeModal()">Cancel</button></div>`);
+/* Every posted line for the week, for offline calibration. No credits spent. */
+function exportProps(){
+  const blob = new Blob([JSON.stringify({ week:S.week, season:SEASON, exported:new Date().toISOString(),
+                                          meta:S.propsMeta, props:S.props })], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = `props-${SEASON}-wk${S.week}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
 function saveWorker(){ WORKER = $('wkInp').value.trim(); store.set('nflslate.worker',WORKER); closeModal(); load(); }
 
 $('bGuide').onclick = () => showModal(`<h2>How this works</h2>
@@ -1567,6 +1638,7 @@ $('bGuide').onclick = () => showModal(`<h2>How this works</h2>
      <code>role</code> snap share moved more than 15 points ·
      <code>⚠ questionable</code> on the report, modeled as playing ·
      <code>returning</code> no games this season, using last year's role ·
+     <code>short game</code> a game in the window at under half his usual snaps — his rates are understated ·
      <code>+N% vacated</code> inherits share from an injured teammate ·
      <code>script</code> spread of 7+ ·
      <code>o-line</code> starting linemen on the report ·
