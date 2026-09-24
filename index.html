@@ -92,6 +92,7 @@ select{background:var(--bg3);border:1px solid var(--b1);border-radius:var(--r1);
 .e-num{text-align:right;flex-shrink:0}
 .e-ev{font-family:var(--fm);font-size:19px;font-weight:600;line-height:1}
 .e-pts{font-family:var(--fm);font-size:10.5px;color:var(--t3);margin-top:3px}
+.e-info{font-size:10px;color:var(--g);margin-top:5px;opacity:.75}
 .bdgs{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}
 .bdg{font-size:9px;font-weight:700;padding:2px 6px;border-radius:5px;background:var(--bg4);
      color:var(--t2);letter-spacing:.4px;text-transform:uppercase}
@@ -177,7 +178,7 @@ textarea.inp{height:300px;resize:vertical;line-height:1.55}
 
 <div class="hdr">
   <div class="hdr-top">
-    <div class="logo">NFL <span>Slate</span></div>
+    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.3</span>
     <div class="wk"><button id="wPrev">‹</button><div class="lbl" id="wLbl">Week —</div><button id="wNext">›</button></div>
     <div class="spacer"></div>
     <button class="btn pull" id="bPull">↓ Pull odds</button>
@@ -587,6 +588,99 @@ function confidence(g){
   return clamp((need?have/need:0)*0.65 + clamp(curN/8,0,1)*0.35, 0, 1);
 }
 
+
+/* ===================================================================== */
+/* WHY — drivers behind a projection, split by what the model actually    */
+/* uses versus context it does not yet model.                             */
+/* ===================================================================== */
+const DEF_POS = /^(CB|S|FS|SS|DB|LB|ILB|OLB|MLB|DE|DT|NT|EDGE)$/;
+const SKILL_POS = /^(QB|RB|WR|TE|FB)$/;
+
+function whyFactors(e){
+  const { prop:pr, game:g, proj, pj } = e;
+  const side = pj.side, opp = side.opp;
+  const lg = S.prior.league || {};
+  const used = [], context = [];
+
+  // --- volume
+  const lgAtt = lg.attempts_pg || 33;
+  const dAtt = side.att - lgAtt;
+  if (Math.abs(dAtt) >= 1.5)
+    used.push([dAtt > 0 ? 'up' : 'down',
+      `${side.team} projected ${R(side.att,1)} pass attempts, ${R(Math.abs(dAtt),1)} ${dAtt>0?'above':'below'} league average`]);
+
+  // --- share
+  if (pj.parts.share !== undefined)
+    used.push(['flat', `${(pj.parts.share*100).toFixed(1)}% ${pr.market==='player_rush_yds'?'carry':'target'} share`]);
+
+  // --- matchup: opponent defense
+  const dYpa = teamRate(opp,'defense','ypa','ypa'), dYpc = teamRate(opp,'defense','ypc','ypc');
+  if (pr.market === 'player_rush_yds' && dYpc !== null && lg.ypc){
+    const d = dYpc - lg.ypc;
+    if (Math.abs(d) >= 0.2) used.push([d>0?'up':'down',
+      `${opp} allows ${R(dYpc,2)} yards per carry, ${R(Math.abs(d),2)} ${d>0?'above':'below'} average`]);
+  } else if (dYpa !== null && lg.ypa){
+    const d = dYpa - lg.ypa;
+    if (Math.abs(d) >= 0.2) used.push([d>0?'up':'down',
+      `${opp} allows ${R(dYpa,2)} yards per attempt, ${R(Math.abs(d),2)} ${d>0?'above':'below'} average`]);
+  }
+
+  // --- script
+  const sp = g.spread || 0;
+  const favored = (side.team === g.home && sp > 0) || (side.team === g.away && sp < 0);
+  if (Math.abs(sp) >= 4)
+    used.push([favored ? 'down' : 'up',
+      `${side.team} ${favored?'favored':'an underdog'} by ${Math.abs(sp)} — script pushes ${favored?'toward the run':'toward passing'}`]);
+
+  // --- weather
+  if (proj.wf.indoor) used.push(['flat','Indoor, no weather adjustment']);
+  else if (proj.wf.mult < 1)
+    used.push(['down', `${proj.wf.wind} mph wind trims passing efficiency ${Math.round((1-proj.wf.mult)*100)}%`]);
+
+  // --- o-line
+  if (side.ol.sev > 0)
+    used.push(['down', `${side.team} O-line starters on the report — ${Math.round(side.ol.sev*100)}% severity at your ${S.olineImp}% setting`]);
+
+  /* ---- context the model does NOT currently use ---- */
+  const inj = S.injuries.filter(i => /out|doubtful|questionable/i.test(i.status));
+
+  const mates = inj.filter(i => i.team === side.team && SKILL_POS.test(i.position||'')
+                           && normName(i.name) !== normName(pr.player));
+  for (const m of mates.slice(0,5))
+    context.push(['up', `Teammate ${m.position} ${m.name} is ${m.status.toLowerCase()}${m.injury?' ('+m.injury+')':''} — vacated usage could land here`]);
+
+  const dbs = inj.filter(i => i.team === opp && DEF_POS.test(i.position||''));
+  for (const d of dbs.slice(0,5))
+    context.push([/^(CB|S|FS|SS|DB)$/.test(d.position)?'up':'flat',
+      `${opp} ${d.position} ${d.name} is ${d.status.toLowerCase()}${d.injury?' ('+d.injury+')':''}`]);
+
+  const oppOl = S.oline[opp];
+  if (oppOl && oppOl.severity > 0)
+    context.push(['flat', `${opp} also has O-line starters out — their offense may stall, which changes the script`]);
+
+  if (pr.n_lines > 1)
+    context.push(['flat', `Books posted ${pr.n_lines} different lines spanning ${pr.line_spread} — the number you get matters as much as the price`]);
+
+  return { used, context };
+}
+
+function whyHtml(e){
+  const w = whyFactors(e);
+  const arrow = d => d === 'up' ? '<span style="color:var(--gr)">▲</span>'
+                   : d === 'down' ? '<span style="color:var(--r)">▼</span>'
+                   : '<span style="color:var(--t3)">•</span>';
+  const li = x => `<div style="display:flex;gap:8px;margin:5px 0;line-height:1.5">
+      <span style="flex-shrink:0">${arrow(x[0])}</span><span>${x[1]}</span></div>`;
+  return `<div class="sec"><h3>Why this number</h3>
+    <div class="note">${w.used.length ? w.used.map(li).join('')
+      : 'Nothing notable — this is a baseline projection.'}</div></div>
+    ${w.context.length ? `<div class="sec"><h3>Not in the model — check yourself</h3>
+      <div class="note" style="opacity:.92">${w.context.map(li).join('')}</div>
+      <div class="note" style="margin-top:7px;color:var(--y)">These do not move the projection above.
+        Injury redistribution and coverage matchups aren't modeled yet, so treat them as reasons to
+        look closer, not as part of the edge.</div></div>` : ''}`;
+}
+
 /* ===================================================================== */
 /* DATA                                                                   */
 /* ===================================================================== */
@@ -710,6 +804,7 @@ function edgeRow(e, i){
     <div class="e-num">
       <div class="e-ev" style="color:${evColor(b.ev)}">${b.ev>0?'+':''}${R(b.ev,1)}%</div>
       <div class="e-pts">${b.pts>0?'+':''}${R(b.pts,1)} pts</div>
+      <div class="e-info">ⓘ why</div>
     </div>
   </div>`;
 }
@@ -874,6 +969,7 @@ function openEdge(i){
         ${e.fair.fair?`Book hold on this market: ${e.fair.hold}%.`:'Only one side quoted — the fair price still carries vig, so this edge is overstated.'}
       </div></div>
 
+    ${whyHtml(e)}
     ${Math.abs(b.pts) > 12 ? `<div class="sec"><div class="warn">
       <b>${R(Math.abs(b.pts),1)}-point edge is larger than this model can credibly produce.</b>
       Far more likely an input is wrong — check whether the player's role changed, whether
