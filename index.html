@@ -531,22 +531,33 @@ function buildEdges(){
       badges: edgeBadges(pr, g, pj, best, dv),
     });
   }
-  const priced = out.filter(e => e.best.ev >= S.minev).sort((a,b) => b.best.ev - a.best.ev);
-  return { priced, all:out };
+  // A model that says 95% against a real market is reporting a broken input,
+  // not an edge. Quarantine these instead of ranking them first.
+  const suspect = out.filter(e => e.best.p > 0.90 || e.best.p < 0.10 || Math.abs(e.best.pts) > 20);
+  const clean = out.filter(e => suspect.indexOf(e) < 0);
+  const priced = clean.filter(e => e.best.ev >= S.minev).sort((a,b) => b.best.ev - a.best.ev);
+  return { priced, all:clean, suspect };
 }
 
 function edgeBadges(pr, g, pj, best, dv){
   const b = [];
   const m = pj.meta;
-  if ((m.weeks_played || 0) < 3) b.push(['warn','thin']);
+  // Sample size that matters is opportunities, not games played.
+  const w = S.lastn >= 99 ? 'season' : 'last';
+  const st = m[w] || m.season;
+  const opp = st ? (pr.market === 'player_rush_yds' ? (st.carries_pg||0)
+                  : pr.market === 'player_pass_yds' ? (st.att_pg||0)
+                  : (st.targets_pg||0)) * (st.games||0) : 0;
+  if (opp < 8) b.push(['warn', `${Math.round(opp)} opp`]);
+  if ((m.weeks_played || 0) < 2) b.push(['warn','1 game']);
   if (m.snap_drift !== null && Math.abs(m.snap_drift) > 0.15) b.push(['warn','role']);
   const inj = S.injuries.find(i => normName(i.name) === normName(pr.player));
   if (inj && /out|doubtful|questionable/i.test(inj.status)) b.push(['bad','⚠ '+inj.status.toLowerCase()]);
   if (Math.abs(g.spread||0) >= 7) b.push(['info','script']);
   if (pj.side.ol.sev >= 0.3) b.push(['warn','o-line']);
-  if (Math.abs(best.pts) > 12) b.push(['bad','absurd']);
+  if (Math.abs(best.pts) > 12) b.push(['bad','check inputs']);
   if (!dv.fair) b.push(['warn','1-sided']);
-  if (pr.line_spread >= 2) b.push(['info','shop '+pr.line_spread]);
+  if (pr.line_spread >= 2) b.push(['info','lines vary '+pr.line_spread]);
   return b;
 }
 
@@ -793,12 +804,20 @@ function render(){
   if (!res.priced.length){
     $('main').innerHTML = `<div class="empty"><b>Nothing clears +${S.minev}% EV this week.</b><br><br>
       ${res.all.length} props priced, none with an edge worth taking.<br>
+      ${res.suspect.length?res.suspect.length+' more were quarantined as implausible.<br>':''}
       Lower the threshold to see what's close, or leave it — a flat week is a real answer.</div>`;
     return;
   }
   $('main').innerHTML = `<div class="sechead">${res.priced.length} edges ≥ +${S.minev}% EV
       <span style="float:right;text-transform:none;letter-spacing:0">of ${res.all.length} priced</span></div>`
-    + res.priced.map(edgeRow).join('');
+    + res.priced.map(edgeRow).join('')
+    + (res.suspect.length ? `<div class="sechead" style="color:var(--r)">
+        ${res.suspect.length} quarantined — model over 90% confident
+        <span style="float:right;text-transform:none;letter-spacing:0;color:var(--t3)">
+        almost always a bad input, not an edge</span></div>
+      <div class="note" style="margin-bottom:10px">These are excluded from the board.
+        A projection that disagrees this violently with a posted line usually means the player's
+        role changed, the line is an odd rung, or the name matched the wrong player.</div>` : '');
   document.querySelectorAll('.erow').forEach(el => el.onclick = () => openEdge(+el.dataset.e));
 }
 
@@ -1010,6 +1029,12 @@ $('bGuide').onclick = () => showModal(`<h2>How this works</h2>
      <i>below</i> the projection. Treating them as normal would inflate every OVER, which is the
      most common way a homemade prop model loses money. Receptions use Poisson, since it's a small
      count rather than a continuous quantity.</p>
+
+  <h4>Quarantine</h4>
+  <p>Anything the model rates above 90% or below 10% is pulled off the board entirely. Against a
+     real market those don't exist — they mean a role changed, a name matched the wrong player, or
+     the book posted an unusual rung. The count is shown so you know they happened, but they are
+     never ranked as plays.</p>
 
   <h4>Empty is a real answer</h4>
   <p>If nothing clears the EV threshold, the board says so rather than showing you the least-bad
