@@ -92,7 +92,9 @@ select{background:var(--bg3);border:1px solid var(--b1);border-radius:var(--r1);
 .e-num{text-align:right;flex-shrink:0}
 .e-ev{font-family:var(--fm);font-size:19px;font-weight:600;line-height:1}
 .e-pts{font-family:var(--fm);font-size:10.5px;color:var(--t3);margin-top:3px}
-.e-info{font-size:10px;color:var(--g);margin-top:5px;opacity:.75}
+.glink{color:var(--g);cursor:pointer;border-bottom:1px dotted var(--g)}
+.glink:hover{color:var(--t)}
+.card-go{margin-left:auto;font-size:10.5px;font-weight:600;color:var(--g);white-space:nowrap}
 .bdgs{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}
 .bdg{font-size:9px;font-weight:700;padding:2px 6px;border-radius:5px;background:var(--bg4);
      color:var(--t2);letter-spacing:.4px;text-transform:uppercase}
@@ -208,7 +210,7 @@ details.gx[open]>summary .cv{transform:rotate(90deg)}
 
 <div class="hdr">
   <div class="hdr-top">
-    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.15</span>
+    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.16</span>
     <div class="wk"><button id="wPrev">‹</button><div class="lbl" id="wLbl">Week —</div><button id="wNext">›</button></div>
     <div class="spacer"></div>
     <button class="btn pull" id="bPull">↓ Pull odds</button>
@@ -1252,14 +1254,13 @@ function edgeRow(e, i){
         <span class="e-mkt">${MKT[p.market].label}</span>
         <span class="e-dir ${b.dir}">${b.dir.toUpperCase()} ${p.line}</span>
       </div>
-      <div class="e-sub">proj <b>${R(e.pj.mean,1)}</b> · ${p.game} · ${am(b.price)}${b.book?' '+b.book:''}
+      <div class="e-sub">proj <b>${R(e.pj.mean,1)}</b> · <span class="glink" data-g="${e.game.game_id}" title="Open game page">${p.game} ›</span> · ${am(b.price)}${b.book?' '+b.book:''}
         · model ${Math.round(b.p*100)}% vs fair ${Math.round(b.fair*100)}% · ${Math.round(e.opp)} opp, ${Math.round(e.w*100)}% weight</div>
       ${e.badges.length?`<div class="bdgs">${e.badges.map(x=>`<span class="bdg ${x[0]}">${x[1]}</span>`).join('')}</div>`:''}
     </div>
     <div class="e-num">
       <div class="e-ev" style="color:${evColor(b.ev)}">${b.ev>0?'+':''}${R(b.ev,1)}%</div>
       <div class="e-pts">${b.pts>0?'+':''}${R(b.pts,1)} pts</div>
-      <div class="e-info">ⓘ why</div>
     </div>
   </div>`;
 }
@@ -1293,7 +1294,7 @@ function card(g){
         <div class="tm-r"><span>carries</span><span>${R(x[0].carries,0)}</span></div>
         <div class="tm-r"><span>rush yds</span><span>${R(x[0].rush_yards,0)}</span></div>
       </div>`).join('')}</div>
-    <div class="chips">${c.map(x=>`<span class="chip ${x[0]}">${x[1]}</span>`).join('')}</div>
+    <div class="chips" style="align-items:center">${c.map(x=>`<span class="chip ${x[0]}">${x[1]}</span>`).join('')}<span class="card-go">Game page ›</span></div>
   </div>`;
 }
 
@@ -1417,7 +1418,11 @@ function render(){
       <div class="note" style="margin-bottom:10px">These are excluded from the board.
         A projection that disagrees this violently with a posted line usually means the player's
         role changed, the line is an odd rung, or the name matched the wrong player.</div>` : '');
-  document.querySelectorAll('.erow').forEach(el => el.onclick = () => openEdge(+el.dataset.e));
+  document.querySelectorAll('.erow').forEach(el => el.onclick = ev => {
+    const gl = ev.target.closest('.glink');
+    if (gl) { ev.stopPropagation(); openGame(gl.dataset.g); return; }
+    openEdge(+el.dataset.e);
+  });
 }
 
 /* ---------- detail panels ---------- */
