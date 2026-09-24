@@ -201,6 +201,8 @@ details.gx[open]>summary .cv{transform:rotate(90deg)}
 .prow{cursor:pointer}.prow:hover{background:var(--bg3)}
 .st{font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:5px;letter-spacing:.4px;min-width:26px;text-align:center}
 .st.out{background:var(--rd);color:var(--r)}.st.q{background:var(--yd);color:var(--y)}
+.st.dnp{background:rgba(255,159,10,.14);color:var(--g)}.st.lp{background:var(--bg2);color:var(--t2);border:1px solid var(--b1)}
+.st.rest{background:var(--bg2);color:var(--t3);border:1px solid var(--b1)}
 .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--bg4);
       border-top-color:var(--g);border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px}
 @keyframes s{to{transform:rotate(360deg)}}
@@ -210,7 +212,7 @@ details.gx[open]>summary .cv{transform:rotate(90deg)}
 
 <div class="hdr">
   <div class="hdr-top">
-    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.16</span>
+    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.18</span>
     <div class="wk"><button id="wPrev">‹</button><div class="lbl" id="wLbl">Week —</div><button id="wNext">›</button></div>
     <div class="spacer"></div>
     <button class="btn pull" id="bPull">↓ Pull odds</button>
@@ -240,8 +242,8 @@ details.gx[open]>summary .cv{transform:rotate(90deg)}
 <div class="ctrl" id="ctrlSlate" style="display:none">
   <div class="sl"><label>Market anchor</label><input type="range" id="anchor2" min="40" max="100" value="75" step="5"><div class="val" id="anchorV2">75%</div></div>
   <select id="sort">
-    <option value="comp">Sort: Composite</option><option value="time">Sort: Kickoff</option>
-    <option value="total">Sort: Total</option><option value="disagree">Sort: Disagreement</option>
+    <option value="time">Sort: Kickoff</option><option value="edges">Sort: Edges</option>
+    <option value="inj">Sort: Injuries</option><option value="total">Sort: Total</option>
   </select>
 </div>
 
@@ -350,7 +352,7 @@ const COORDS={ARI:[33.528,-112.263],ATL:[33.755,-84.401],BAL:[39.278,-76.623],BU
 const S = { tab:'edges', week:null, weeks:[], games:[], rates:{}, prior:{},
             pRates:{}, pPrior:{}, injuries:[], oline:{}, wx:{},
             props:[], propsMeta:null, anchor:75, minev:2, olineImp:6, lastn:5, trust:50,
-            mktFilter:new Set(Object.keys(MKT)), sort:'comp',
+            mktFilter:new Set(Object.keys(MKT)), sort:'time',
             loading:false, pulling:false, err:null, dataErr:[], game:null, gd:null, gdErr:null,
             roster:{ loaded:false, week:null, byName:new Map(), teams:new Set() } };
 
@@ -562,18 +564,6 @@ function project(g){
   const home = side(g.home,g.away,ptsH,ptsA), away = side(g.away,g.home,ptsA,ptsH);
   return { mk, ptsHome:ptsH, ptsAway:ptsA, mH, mA, modelTotal, disagree, wf,
            home, away, plays:home.plays+away.plays };
-}
-
-function composite(g,p){
-  const maxAtt = Math.max(p.home.att, p.away.att);
-  const passVol = clamp((maxAtt-27)/13*10, 0, 10);
-  const pace    = clamp((p.plays-110)/24*10, 0, 10);
-  const script  = clamp(Math.abs(g.spread||0)/10*10, 0, 10);
-  let env = 0;
-  if (p.wf.indoor) env += 3;
-  if (p.wf.wind !== null && p.wf.wind >= 13) env += clamp((p.wf.wind-10)/12*10, 0, 7);
-  if (g.total !== null) env += clamp(Math.abs(g.total-44)/8*4, 0, 4);
-  return R(passVol*.35 + pace*.25 + script*.20 + clamp(env,0,10)*.20, 1);
 }
 
 /* ===================================================================== */
@@ -1242,7 +1232,6 @@ function spreadTxt(g){
   return g.spread > 0 ? `${g.home} -${g.spread}` : g.spread < 0 ? `${g.away} -${Math.abs(g.spread)}` : 'PK';
 }
 const evColor = v => v >= 6 ? 'var(--gr)' : v >= 3 ? 'var(--g)' : v >= 0 ? 'var(--y)' : 'var(--t3)';
-const compColor = v => v >= 7 ? 'var(--g)' : v >= 5 ? 'var(--y)' : 'var(--t3)';
 const am = v => v === null||v === undefined ? '—' : (v > 0 ? '+'+v : ''+v);
 
 function edgeRow(e, i){
@@ -1265,10 +1254,44 @@ function edgeRow(e, i){
   </div>`;
 }
 
+/* ---- slate card signals: why this game is worth opening ---- */
+let _slateEdges = {};
+function edgeCounts(){
+  const n = {};
+  if (!S.props.length) return n;
+  for (const e of buildEdges().priced) n[e.game.game_id] = (n[e.game.game_id] || 0) + 1;
+  return n;
+}
+/** Per-team injury chip: "PIT 2 out · 1 Q" (game statuses) or "CIN 3 DNP" (practice, before
+    statuses post). Red = a regular is out or doubtful; amber = questionable or missed practice.
+    Limited practice is left off the card (nearly every team has some midweek) — it's on the game page. */
+function injChips(g){
+  if (!S.gd) return S.gdErr ? [] : [['', 'injuries …']];
+  const list = notableInjuries(g), out = [];
+  for (const t of [g.away, g.home]) {
+    const xs = list.filter(i => i.team === t && !i.tier.rest && i.tier.k <= 3);
+    if (!xs.length) continue;
+    const c = k => xs.filter(i => i.tier.k === k).length;
+    const o = c(0) + c(1), q = c(2), dnp = c(3);
+    const txt = [o && `${o} out`, q && `${q} Q`, dnp && `${dnp} DNP`].filter(Boolean).join(' · ');
+    const qbs = xs.filter(i => i.position === 'QB' && i.tier.k <= 3);
+    out.push([o ? 'a' : 'd', `${t} ${txt}`]);
+    for (const qb of qbs) out.push(['a', `QB ${qb.name.split(' ').slice(-1)[0]} ${qb.tier.tag}`]);
+  }
+  return out;
+}
+/** Sort weight: out/doubtful regulars count most, then DNP, then Q, then limited. */
+function injWeight(g){
+  if (!S.gd) return 0;
+  const w = [3, 3, 1.5, 2, 0.5];
+  return notableInjuries(g).reduce((s, i) => s + (w[i.tier.k] || 0) * (i.position === 'QB' ? 3 : 1), 0);
+}
+
 function card(g){
-  const p = project(g), comp = composite(g,p), hotH = p.home.att >= p.away.att;
-  const wx = S.wx[g.game_id], c = [];
-  if (p.wf.indoor) c.push(['d','dome']);
+  const p = project(g), hotH = p.home.att >= p.away.att;
+  const nE = _slateEdges[g.game_id] || 0;
+  const wx = S.wx[g.game_id], c = [...injChips(g)];
+  if (p.wf.indoor) c.push(['','dome']);
   else if (wx && wx.wind >= 13) c.push(['w',wx.wind+' mph wind']);
   else if (wx) c.push(['',wx.wind+' mph · '+wx.temp+'°']);
   if (g.div_game) c.push(['','div']);
@@ -1280,8 +1303,9 @@ function card(g){
   return `<div class="card" data-id="${g.game_id}">
     <div class="c-top"><div><div class="matchup">${g.away}<span class="at">@</span>${g.home}</div>
       <div class="kick">${fmtKick(g)}</div></div>
-      <div class="comp"><div class="comp-v" style="color:${compColor(comp)}">${comp.toFixed(1)}</div>
-      <div class="comp-l">composite</div></div></div>
+      <div class="comp">${S.props.length
+        ? `<div class="comp-v" style="color:${nE ? 'var(--g)' : 'var(--t3)'}">${nE || '—'}</div><div class="comp-l">${nE === 1 ? 'edge' : 'edges'}</div>`
+        : `<div class="comp-l" style="margin-top:0">no odds</div>`}</div></div>
     <div class="lines">
       <div class="line"><div class="k">spread</div><div class="v">${spreadTxt(g)}</div></div>
       <div class="line"><div class="k">total</div><div class="v">${g.total===null?'—':g.total}</div></div>
@@ -1367,8 +1391,12 @@ function render(){
   if (S.game){ renderGame(); return; }
 
   if (S.tab === 'slate'){
-    const key = { comp:g=>-composite(g,project(g)), time:g=>g.gameday+' '+g.gametime,
-                  total:g=>-(g.total||0), disagree:g=>-Math.abs(project(g).disagree||0) }[S.sort];
+    loadGameData();                                    // snap shares decide which injuries are notable
+    _slateEdges = edgeCounts();
+    const key = { time:g=>g.gameday+' '+g.gametime,
+                  edges:g=>-(_slateEdges[g.game_id]||0),
+                  inj:g=>-injWeight(g),
+                  total:g=>-(g.total||0) }[S.sort] || (g=>g.gameday+' '+g.gametime);
     const sorted = [...S.games].sort((a,b)=>{const x=key(a),y=key(b);return x<y?-1:x>y?1:0;});
     $('main').innerHTML = S.games.length
       ? `<div class="grid">${sorted.map(card).join('')}</div>`
@@ -1610,21 +1638,46 @@ function chartsBody(g){
 
 /** Injury-report regulars, both sides of the ball: 60%+ of snaps this season or last — 40%+ for
     QB/RB/WR/TE, who rotate (a slot receiver or lead back often sits at 45-55% and still matters). */
+/* Game statuses (Out / Doubtful / Questionable) are published Friday for Sunday games
+   (two days ahead for Thursday and Monday games). Before that, the practice report
+   is all there is, so it's shown too: DNP and limited, with veteran rest days marked
+   as rest. Practice-only entries never move the projections. */
+function injTier(i){
+  const s = i.status || '', pr = i.practice || '', why = (i.injury || '').toLowerCase();
+  if (/^out/i.test(s))      return { k:0, tag:'OUT',  cls:'out', label:'out' };
+  if (/^doubt/i.test(s))    return { k:1, tag:'D',    cls:'out', label:'doubtful' };
+  if (/^question/i.test(s)) return { k:2, tag:'Q',    cls:'q',   label:'questionable' };
+  const rest = /not injury related/.test(why);
+  if (/did not/i.test(pr))  return rest ? { k:5, tag:'REST', cls:'rest', label:'rest day', rest:true }
+                                       : { k:3, tag:'DNP',  cls:'dnp', label:'did not practice', practice:true };
+  if (/limited/i.test(pr))  return rest ? null : { k:4, tag:'LP', cls:'lp', label:'limited', practice:true };
+  return null;                                                      // full participant
+}
+
+/** Has this team's final report for the game been published? Any game status on the team
+    says yes; so does the clock (reports land ~4 PM ET two days before kickoff). After that,
+    a practice-only entry means "no designation" — expected to play — so it isn't shown. */
+function finalReportOut(team, g){
+  if (S.injuries.some(i => i.team === team && i.status)) return true;
+  const d = new Date(`${g.gameday}T16:00:00`); d.setDate(d.getDate() - 2);
+  return Date.now() >= d.getTime();
+}
+
 function notableInjuries(g){
-  const rank = s => /^out/i.test(s) ? 0 : /^doubt/i.test(s) ? 1 : 2;
-  const out = [];
+  const out = [], final = { [g.home]: finalReportOut(g.home, g), [g.away]: finalReportOut(g.away, g) };
   for (const i of S.injuries) {
     if (i.team !== g.home && i.team !== g.away) continue;
-    if (!/out|doubtful|questionable/i.test(i.status || '')) continue;
+    const tier = injTier(i); if (!tier) continue;
+    if ((tier.practice || tier.rest) && final[i.team]) continue;
     const n = normName(i.name);
     const c = S.gd ? S.gd.snaps.get(n + '|' + i.team) : null, p = S.gd ? S.gd.prior.get(n) : null;
     const off = Math.max(c ? c[1] : 0, p ? p[1] : 0), def = Math.max(c ? c[2] : 0, p ? p[2] : 0);
     const bar = SKILL_POS.test(i.position || '') ? 0.4 : 0.6;
     if (S.gd && Math.max(off, def) < bar) continue;
-    out.push({ ...i, side: off >= def ? 'O' : 'D', snap: Math.max(off, def),
-               modeled: OUT_RE.test(i.status) && SKILL_POS.test(i.position || '') });
+    out.push({ ...i, tier, side: off >= def ? 'O' : 'D', snap: Math.max(off, def),
+               modeled: OUT_RE.test(i.status || '') && SKILL_POS.test(i.position || '') });
   }
-  return out.sort((a,b) => rank(a.status) - rank(b.status) || b.snap - a.snap);
+  return out.sort((a,b) => a.tier.k - b.tier.k || b.snap - a.snap);
 }
 
 function injuriesBody(g, list){
@@ -1634,15 +1687,25 @@ function injuriesBody(g, list){
     return `<div class="gbox" style="margin:0;background:var(--bg3);border:none">
       <div style="font-family:var(--fd);font-weight:700;margin-bottom:3px">${t}</div>
       ${xs.length ? xs.map(i => `<div class="irow">
-          <span class="st ${/^(out|doubt)/i.test(i.status)?'out':'q'}">${/^out/i.test(i.status)?'OUT':/^doubt/i.test(i.status)?'D':'Q'}</span>
+          <span class="st ${i.tier.cls}" title="${i.tier.label}">${i.tier.tag}</span>
           <span style="flex:1">${i.position} ${i.name}${i.modeled?' <span class="bdg info" style="margin-left:4px">in projections</span>':''}</span>
-          <span style="color:var(--t3);font-size:11.5px;font-family:var(--fm)">${i.injury?i.injury.toLowerCase()+' · ':''}${i.side} ${Math.round(i.snap*100)}%</span>
-        </div>`).join('') : '<div class="note">No starters on the report.</div>'}
+          <span style="color:var(--t3);font-size:11.5px;font-family:var(--fm)">${i.injury && !i.tier.rest ? i.injury.toLowerCase()+' · ' : ''}${i.side} ${Math.round(i.snap*100)}%</span>
+        </div>`).join('') : '<div class="note">No regulars on the report.</div>'}
     </div>`;
   };
+  const pre = !finalReportOut(g.home, g) || !finalReportOut(g.away, g);
   return `<div class="mgrid">${team(g.away)}${team(g.home)}</div>
-    <div class="note" style="margin-top:7px">Regulars only: 60%+ of snaps, or 40%+ for QB/RB/WR/TE. Out/Doubtful skill players are already
-      redistributed in the projections; everything else is context the model doesn't use.</div>`;
+    ${pre ? `<div class="note" style="margin-top:7px;color:var(--g)">Game statuses aren't out yet — they post
+      ${gameStatusDay(g)}. Until then this is the practice report: <b>DNP</b> didn't practice,
+      <b>LP</b> limited, <b>REST</b> a scheduled veteran day off.</div>` : ''}
+    <div class="note" style="margin-top:7px">Regulars only: 60%+ of snaps, or 40%+ for QB/RB/WR/TE. Out/Doubtful skill players are
+      redistributed in the projections; practice reports, questionable players and defenders are context the model doesn't use.</div>`;
+}
+
+/** When a game's final injury statuses are published: two days before kickoff. */
+function gameStatusDay(g){
+  const k = new Date(`${g.gameday}T12:00:00`); k.setDate(k.getDate() - 2);
+  return k.toLocaleDateString('en-US', { weekday:'long' });
 }
 
 function weatherLine(g, p){
@@ -1673,7 +1736,7 @@ function propsBody(g){
     const t = tag.get(e), b = e.best;
     return `<div class="prow" data-i="${i}">
       <span style="flex:1">${e.prop.player} <span style="color:var(--t3);font-size:11px">${MKT[e.prop.market].label}</span>
-        ${t==='edge'?`<span class="e-dir ${b.dir}" style="margin-left:4px">${b.dir.toUpperCase()} ${R(b.ev,1)}%</span>`
+        ${t==='edge'?`<span class="e-dir ${b.dir}" style="margin-left:4px">${b.dir.toUpperCase()} · +${R(b.ev,1)}% EV</span>`
           : t ? `<span class="bdg ${t==='quarantined'?'bad':''}" style="margin-left:4px">${t}</span>` : ''}</span>
       <span style="font-family:var(--fm);color:var(--t2);width:52px;text-align:right">${e.prop.line}</span>
       <span style="font-family:var(--fm);color:var(--g);width:70px;text-align:right">proj ${R(e.pj.mean, e.prop.market==='player_receptions'?1:0)}</span>
@@ -1686,10 +1749,13 @@ function renderGame(){
   if (!g) { $('main').innerHTML = `<div class="gpage"><button class="gback" onclick="leaveGame()">‹ Slate</button>
       <div class="empty">That game isn't on the Week ${S.week} slate.</div></div>`; return; }
   loadGameData();
-  const p = project(g), conf = confidence(g), comp = composite(g,p);
+  const p = project(g), conf = confidence(g);
   const ol = [g.away,g.home].map(t => S.oline[t] ? `${t}: ${S.oline[t].players.map(x=>x.name+' ('+x.status+')').join(', ')}` : null).filter(Boolean);
   const inj = notableInjuries(g);
-  const nOut = inj.filter(i => /^(out|doubt)/i.test(i.status)).length, nQ = inj.length - nOut;
+  const nOut = inj.filter(i => i.tier.k <= 1).length, nQ = inj.filter(i => i.tier.k === 2).length;
+  const nDnp = inj.filter(i => i.tier.k === 3).length, nLp = inj.filter(i => i.tier.k === 4).length;
+  const injSum = [nOut && `${nOut} out`, nQ && `${nQ} questionable`, nDnp && `${nDnp} DNP`, nLp && `${nLp} limited`]
+                   .filter(Boolean).join(' · ') || 'none';
   const props = S.props.filter(x => x.game === g.away+'@'+g.home).length;
   const pb = propsBody(g);
   const nEdge = _gameEdges;
@@ -1702,7 +1768,7 @@ function renderGame(){
         <div class="gsub">${spreadTxt(g)} · total ${g.total ?? '—'} · ${fmtKick(g)}</div>
         <div class="gsub" style="color:var(--t3)">${g.away_qb||'?'} vs ${g.home_qb||'?'} · ${g.stadium||''}${g.surface?' · '+g.surface:''}</div>
       </div>
-      <div class="comp"><div class="comp-v" style="color:${compColor(comp)}">${comp.toFixed(1)}</div><div class="comp-l">composite</div></div>
+      ${S.props.length ? `<div class="comp"><div class="comp-v" style="color:${nEdge ? 'var(--g)' : 'var(--t3)'}">${nEdge || '—'}</div><div class="comp-l">${nEdge === 1 ? 'edge' : 'edges'}</div></div>` : ''}
     </div>
     ${p.disagree!==null&&Math.abs(p.disagree)>=4?`<div class="warn" style="margin-bottom:10px">
       <b>Model disagrees by ${R(Math.abs(p.disagree),1)} points</b> (${R(p.modelTotal,1)} vs ${g.total}).
@@ -1711,7 +1777,7 @@ function renderGame(){
       <div class="note" style="margin-top:8px">Data confidence ${Math.round(conf*100)}%.${ol.length?' O-line on the report — '+ol.join(' · '):''}</div></div>
     ${weatherLine(g, p)}
     ${gx('charts', 'Matchups', 'rushing · passing · points', chartsBody(g))}
-    ${gx('inj', 'Notable injuries', !S.gd && !S.gdErr ? '…' : inj.length ? `${nOut} out · ${nQ} questionable` : 'none', injuriesBody(g, inj))}
+    ${gx('inj', 'Notable injuries', !S.gd && !S.gdErr ? '…' : injSum, injuriesBody(g, inj))}
     ${gx('props', 'Props in this game', props ? `${props} posted${nEdge?` · ${nEdge} edge${nEdge>1?'s':''}`:''}` : 'no odds', pb)}
   </div>`;
 
@@ -1751,7 +1817,7 @@ function rundown(){
   L.push('', '--- SLATE ---', '');
   for (const g of S.games){
     const p = project(g);
-    L.push(`${g.away} @ ${g.home}  (${spreadTxt(g)}, ${g.total})  comp ${composite(g,p).toFixed(1)}`);
+    L.push(`${g.away} @ ${g.home}  (${spreadTxt(g)}, ${g.total})`);
     L.push(`     ${g.away}: ${R(p.away.att,0)} att / ${R(p.away.pass_yards,0)} pyd · ${R(p.away.carries,0)} car / ${R(p.away.rush_yards,0)} ryd`);
     L.push(`     ${g.home}: ${R(p.home.att,0)} att / ${R(p.home.pass_yards,0)} pyd · ${R(p.home.carries,0)} car / ${R(p.home.rush_yards,0)} ryd`);
   }
