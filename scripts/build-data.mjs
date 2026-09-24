@@ -26,7 +26,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT    = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT     = path.join(ROOT, 'data');
 const WORKER  = path.join(ROOT, 'worker', 'nfl-data-worker.js');
-const WINDOWS = [3, 5, 8];   // the page's Last 3 / 5 / 8 selector; "Season" uses the season block
+const WINDOWS = [3, 5, 8];
+const WORKER_URL = process.env.WORKER_URL || 'https://nfl-data.billywitchdoctordfs.workers.dev';   // the page's Last 3 / 5 / 8 selector; "Season" uses the season block
 
 const now = new Date();
 const SEASON = +(process.env.SEASON ||
@@ -134,6 +135,72 @@ async function snapsFile(season, prior) {
   return { season, prior, players, prior_by_name: priorByName };
 }
 
+/* ---- Result tracking ------------------------------------------------------
+   The worker logs every board play (line, price, model %, fair %, time) and keeps
+   updating its closing price until kickoff. Here each play in a finished game is
+   graded from nflverse stats:
+     win / loss / push   stat vs line (push = landed exactly on it)
+     void                player didn't take an offensive snap
+     pending             game not final, or stats not published yet
+   CLV = fair probability of the side at close − fair probability when logged, at
+   the SAME line. If no book still quoted that line at close, CLV is left blank and
+   "beat close" is judged by which way the line moved. */
+const STAT_COL = { player_pass_yds:'passing_yards', player_rush_yds:'rushing_yards',
+                   player_reception_yds:'receiving_yards', player_receptions:'receptions' };
+const normName = s => (s||'').toLowerCase().replace(/[.'`\-]/g,' ').replace(/\s+(jr|sr|ii|iii|iv|v)\s*$/,'').replace(/\s+/g,'');
+const payout = a => a > 0 ? a/100 : 100/(-a);          // profit per 1u risked
+
+function gradePlays(plays, statRows, snapRows, games) {
+  const final = new Set(games.filter(g => g.home_score !== '' && g.away_score !== '').map(g => g.game_id));
+  const statGames = new Set(statRows.map(r => r.game_id));
+  const byId = new Map(), byName = new Map();
+  for (const r of statRows) {
+    byId.set(`${r.game_id}|${r.player_id}`, r);
+    byName.set(`${r.game_id}|${normName(r.player_display_name)}`, r);
+  }
+  const snapped = new Set(snapRows.filter(r => (+r.offense_snaps || 0) > 0).map(r => `${r.game_id}|${normName(r.player)}`));
+  return plays.map(p0 => {
+    const p = { ...p0 };
+    const col = STAT_COL[p.market], gid = p.game_id, nm = normName(p.player);
+    p.result = 'pending'; p.stat = null; p.units = null;
+    if (col && gid && final.has(gid) && statGames.has(gid)) {
+      const row = (p.pid && byId.get(`${gid}|${p.pid}`)) || byName.get(`${gid}|${nm}`);
+      if (row) p.stat = +row[col] || 0;
+      else if (snapped.has(`${gid}|${nm}`)) p.stat = 0;          // played, recorded nothing
+      if (p.stat === null) { p.result = 'void'; p.units = 0; }
+      else {
+        const over = p.stat > p.line, under = p.stat < p.line;
+        p.result = p.stat === p.line ? 'push' : (p.dir === 'over' ? over : under) ? 'win' : 'loss';
+        p.units = p.result === 'win' ? +payout(p.price).toFixed(3) : p.result === 'loss' ? -1 : 0;
+      }
+    }
+    const c = p.close || {};
+    p.clv = (c.line === p.line && c.fair !== null && c.fair !== undefined && p.fair !== null && p.fair !== undefined)
+      ? +((c.fair - p.fair) * 100).toFixed(2) : null;
+    // Line moved away: the over is "better" if the line went up past where you took it.
+    p.line_move = (c.line !== undefined && c.line !== null) ? +(c.line - p.line).toFixed(1) : 0;
+    p.beat_close = p.clv !== null ? (p.clv > 0 ? true : p.clv < 0 ? false : null)
+                 : p.line_move ? (p.dir === 'over' ? p.line_move > 0 : p.line_move < 0) : null;
+    return p;
+  });
+}
+
+async function resultsFile(season) {
+  const r = await fetch(`${WORKER_URL}/plays?season=${season}`);
+  if (!r.ok) throw new Error(`worker /plays ${r.status}`);
+  const { plays = [] } = await r.json();
+  if (!plays.length) return { season, plays:[] };
+  let stats = [], snaps = [];
+  try { stats = W.parseCSV(await text(`stats_player/stats_player_week_${season}.csv`)).filter(r => r.season_type === 'REG' || r.season_type === 'POST'); }
+  catch (e) { if (!/404/.test(e.message)) throw e; }
+  try { snaps = W.parseCSV(await text(`snap_counts/snap_counts_${season}.csv`)); }
+  catch (e) { if (!/404/.test(e.message)) throw e; }
+  const games = W.parseCSV(await text('schedules/games.csv')).filter(g => g.season === String(season));
+  const graded = gradePlays(plays, stats, snaps, games)
+    .sort((a, b) => (a.week - b.week) || String(a.commence).localeCompare(String(b.commence)) || a.player.localeCompare(b.player));
+  return { season, plays: graded };
+}
+
 async function statsThroughWeek(season) {
   const rows = W.parseCSV(await text(`stats_team/stats_team_week_${season}.csv`));
   return rows.filter(r => r.season_type === 'REG').reduce((m, r) => Math.max(m, +r.week || 0), 0);
@@ -175,6 +242,11 @@ await job(`roster-${SEASON}.json`,      () => rosterFile(SEASON));
 await job(`team-weeks-${PRIOR}.json`,  () => teamWeeksFile(PRIOR));
 await job(`team-weeks-${SEASON}.json`, () => teamWeeksFile(SEASON));
 await job(`snaps-${SEASON}.json`,      () => snapsFile(SEASON, PRIOR));
+// Grading depends on the worker being up. A worker hiccup must never block the
+// rate tables from committing, so its failure is logged, not fatal.
+{ const n = errors.length;
+  await job(`results-${SEASON}.json`, () => resultsFile(SEASON));
+  if (errors.length > n) console.error('  (results failure is non-fatal: ' + errors.splice(n).join('; ') + ')'); }
 
 let through = null;
 try { through = await statsThroughWeek(SEASON); } catch (e) { /* offseason */ }
