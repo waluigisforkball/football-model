@@ -178,7 +178,7 @@ textarea.inp{height:300px;resize:vertical;line-height:1.55}
 
 <div class="hdr">
   <div class="hdr-top">
-    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.13</span>
+    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.14</span>
     <div class="wk"><button id="wPrev">‹</button><div class="lbl" id="wLbl">Week —</div><button id="wNext">›</button></div>
     <div class="spacer"></div>
     <button class="btn pull" id="bPull">↓ Pull odds</button>
@@ -559,11 +559,11 @@ function oppCount(market, meta){
        : tot(st,'targets','targets_pg');
 }
 
-/* Model-trust sample constant, in opportunities: w = trust × n/(n+K).
-   15 everywhere is the original design. On the Week 3 slate that prints 62 edges;
-   the efficiency-k alternative (the same k that shrinks YPA/YPC/YPT) prints 3:
-     { player_pass_yds:250, player_rush_yds:110, player_reception_yds:50, player_receptions:50 } */
-const TRUST_K = { player_pass_yds:15, player_rush_yds:15, player_reception_yds:15, player_receptions:15 };
+/* Model-trust sample constant, in THIS season's opportunities: w = trust × n/(n+K).
+   Same k that shrinks YPA / YPC / YPT, so the model trusts its number exactly as fast
+   as its own inputs stabilize. Replaced a flat 15, which printed 62 edges on the
+   Week 3 2026 slate; this prints ~3. */
+const TRUST_K = { player_pass_yds:250, player_rush_yds:110, player_reception_yds:50, player_receptions:50 };
 const trustK = m => TRUST_K[m] || 15;
 
 /* Below these, the projection is standing on nothing worth pricing. */
@@ -784,8 +784,8 @@ function buildEdges(){
     if (dv.over === null && dv.under === null) continue;
 
     /* The market prices these with information the model doesn't have. Weight the
-       model by the sample it's standing on: w = trust x n/(n+K) in opportunities.
-       At 6 targets the model barely moves the number; at 60 it carries real weight.
+       model by the sample it's standing on: w = trust x n/(n+K) in this season's opportunities,
+       K per market (TRUST_K). Early in the year the model barely moves the number.
        This is why the board is quiet in September and louder in December. */
     // Trust is earned by THIS season's opportunities only. A returning player's
     // 2025 targets are already inside his prior; counting them again as evidence
@@ -1620,11 +1620,13 @@ $('bGuide').onclick = () => showModal(`<h2>How this works</h2>
   <h4>Model trust</h4>
   <p>The market prices these props with information the model doesn't have. So the model's
      probability is blended toward the market's, weighted by the sample it stands on:
-     <code>trust x n/(n+15)</code> in opportunities — targets, carries or attempts.</p>
-  <p>A receiver with 6 targets barely moves the number. The same receiver with 60 targets in
-     December carries real weight. That's deliberate: the board should be quiet early in the season
-     and more assertive once the data has earned it. If it prints dozens of edges in Week 3,
-     it's lying to you.</p>
+     <code>trust x n/(n+K)</code>, where n is this season's opportunities and K is how many it takes
+     for the model's own rates to settle: 250 pass attempts, 110 carries, 50 targets.</p>
+  <p>A receiver with 15 targets in Week 3 carries about 12% weight at trust 50. The same receiver with
+     100 targets in December carries about 33%. That's deliberate: the board should be quiet early in
+     the season and more assertive once the data has earned it. If it prints dozens of edges in
+     Week 3, something is broken. Last season's numbers never count as evidence here — they're
+     already inside the prior.</p>
   <p>Trust at 0 reproduces the market exactly. At 100 the model still gets shrunk by sample size,
      just without the extra haircut. 50 is a reasonable default.</p>
 
