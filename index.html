@@ -178,7 +178,7 @@ textarea.inp{height:300px;resize:vertical;line-height:1.55}
 
 <div class="hdr">
   <div class="hdr-top">
-    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.3</span>
+    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.4</span>
     <div class="wk"><button id="wPrev">‹</button><div class="lbl" id="wLbl">Week —</div><button id="wNext">›</button></div>
     <div class="spacer"></div>
     <button class="btn pull" id="bPull">↓ Pull odds</button>
@@ -197,6 +197,7 @@ textarea.inp{height:300px;resize:vertical;line-height:1.55}
   <div class="sl"><label>Min EV</label><input type="range" id="minev" min="0" max="15" value="2" step="0.5"><div class="val" id="minevV">+2.0%</div></div>
   <div class="sl"><label>Market anchor</label><input type="range" id="anchor" min="40" max="100" value="75" step="5"><div class="val" id="anchorV">75%</div></div>
   <div class="sl"><label>O-line impact</label><input type="range" id="oline" min="0" max="15" value="6" step="1"><div class="val" id="olineV">6%</div></div>
+  <div class="sl"><label>Model trust</label><input type="range" id="trust" min="0" max="100" value="50" step="5"><div class="val" id="trustV">50%</div></div>
   <select id="lastn">
     <option value="3">Last 3</option><option value="5" selected>Last 5</option>
     <option value="8">Last 8</option><option value="99">Season</option>
@@ -266,7 +267,7 @@ const COORDS={ARI:[33.528,-112.263],ATL:[33.755,-84.401],BAL:[39.278,-76.623],BU
 
 const S = { tab:'edges', week:null, weeks:[], games:[], rates:{}, prior:{},
             pRates:{}, pPrior:{}, injuries:[], oline:{}, wx:{},
-            props:[], propsMeta:null, anchor:75, minev:2, olineImp:6, lastn:5,
+            props:[], propsMeta:null, anchor:75, minev:2, olineImp:6, lastn:5, trust:50,
             mktFilter:new Set(Object.keys(MKT)), sort:'comp',
             loading:false, pulling:false, err:null };
 
@@ -452,6 +453,20 @@ function composite(g,p){
 /* ===================================================================== */
 function teamSide(proj, g, team){ return g.home === team ? proj.home : proj.away; }
 
+/** Opportunities behind a projection — the sample the model is actually standing on. */
+function oppCount(market, meta){
+  const w = S.lastn >= 99 ? 'season' : 'last';
+  const st = meta[w] || meta.season;
+  if (!st) return 0;
+  const per = market === 'player_rush_yds' ? (st.carries_pg||0)
+            : market === 'player_pass_yds' ? (st.att_pg||0)
+            : (st.targets_pg||0);
+  return per * (st.games||0);
+}
+
+/* Below these, the projection is standing on nothing worth pricing. */
+const MIN_VOL = { player_pass_yds:120, player_rush_yds:15, player_reception_yds:15, player_receptions:1.5 };
+
 function projectProp(pr, g, proj){
   const meta = playerMeta(pr.player);
   if (!meta) return null;
@@ -512,9 +527,20 @@ function buildEdges(){
     const pj = projectProp(pr, g, proj);
     if (!pj) continue;
 
-    const pModelOver = pOver(pj.mean, pj.sd, pr.line, pj.dist);
+    const pRaw = pOver(pj.mean, pj.sd, pr.line, pj.dist);
     const dv = devig(pr.over, pr.under);
     if (dv.over === null && dv.under === null) continue;
+
+    /* The market prices these with information the model doesn't have. Weight the
+       model by the sample it's standing on: w = trust x n/(n+K) in opportunities.
+       At 6 targets the model barely moves the number; at 60 it carries real weight.
+       This is why the board is quiet in September and louder in December. */
+    const opp = oppCount(pr.market, pj.meta);
+    const w = (S.trust/100) * (opp/(opp + 15));
+    const pFairOver = dv.over !== null ? dv.over : 1 - dv.under;
+    const pModelOver = w*pRaw + (1-w)*pFairOver;
+
+    const lowVol = pj.mean < (MIN_VOL[pr.market] || 0);
 
     // evaluate both sides, keep the better one
     const cands = [];
@@ -529,13 +555,15 @@ function buildEdges(){
 
     out.push({
       prop:pr, game:g, proj, pj, best, fair:dv, pOverModel:pModelOver,
+      pRaw, opp, w, lowVol,
       badges: edgeBadges(pr, g, pj, best, dv),
     });
   }
   // A model that says 95% against a real market is reporting a broken input,
   // not an edge. Quarantine these instead of ranking them first.
   const suspect = out.filter(e => e.best.p > 0.90 || e.best.p < 0.10 || Math.abs(e.best.pts) > 20);
-  const clean = out.filter(e => suspect.indexOf(e) < 0);
+  const lowvol = out.filter(e => e.lowVol && suspect.indexOf(e) < 0);
+  const clean = out.filter(e => suspect.indexOf(e) < 0 && lowvol.indexOf(e) < 0);
   const priced = clean.filter(e => e.best.ev >= S.minev).sort((a,b) => b.best.ev - a.best.ev);
 
   /* Calibration. Across a whole slate the model should land close to the market
@@ -551,7 +579,7 @@ function buildEdges(){
     cal = { model:mm, fair:mf, bias:(mm-mf)*100, n:withFair.length,
             overShare: priced.length ? overs/priced.length : 0 };
   }
-  return { priced, all:clean, suspect, cal };
+  return { priced, all:clean, suspect, lowvol, cal };
 }
 
 function edgeBadges(pr, g, pj, best, dv){
@@ -798,7 +826,7 @@ function edgeRow(e, i){
         <span class="e-dir ${b.dir}">${b.dir.toUpperCase()} ${p.line}</span>
       </div>
       <div class="e-sub">proj <b>${R(e.pj.mean,1)}</b> · ${p.game} · ${am(b.price)}${b.book?' '+b.book:''}
-        · model ${Math.round(b.p*100)}% vs fair ${Math.round(b.fair*100)}%</div>
+        · model ${Math.round(b.p*100)}% vs fair ${Math.round(b.fair*100)}% · ${Math.round(e.opp)} opp, ${Math.round(e.w*100)}% weight</div>
       ${e.badges.length?`<div class="bdgs">${e.badges.map(x=>`<span class="bdg ${x[0]}">${x[1]}</span>`).join('')}</div>`:''}
     </div>
     <div class="e-num">
@@ -848,6 +876,7 @@ function render(){
   $('minevV').textContent = (S.minev>0?'+':'')+S.minev.toFixed(1)+'%';
   $('anchorV').textContent = S.anchor+'%'; $('anchorV2').textContent = S.anchor+'%';
   $('olineV').textContent = S.olineImp+'%';
+  $('trustV').textContent = S.trust+'%';
   $('anchor').value = S.anchor; $('anchor2').value = S.anchor;
   $('ctrlEdges').style.display = S.tab === 'edges' ? '' : 'none';
   $('ctrlSlate').style.display = S.tab === 'slate' ? '' : 'none';
@@ -913,7 +942,9 @@ function render(){
   if (!res.priced.length){
     $('main').innerHTML = `<div class="empty"><b>Nothing clears +${S.minev}% EV this week.</b><br><br>
       ${res.all.length} props priced, none with an edge worth taking.<br>
-      ${res.suspect.length?res.suspect.length+' more were quarantined as implausible.<br>':''}
+      ${res.suspect.length?res.suspect.length+' quarantined as implausible. ':''}${res.lowvol.length?res.lowvol.length+' excluded as low volume.':''}<br>
+      In September this is the expected answer — two games of data against a sharp market
+      shouldn't produce edges.<br>
       Lower the threshold to see what's close, or leave it — a flat week is a real answer.</div>`;
     return;
   }
@@ -935,6 +966,11 @@ function render(){
   $('main').innerHTML = calHtml + `<div class="sechead">${res.priced.length} edges ≥ +${S.minev}% EV
       <span style="float:right;text-transform:none;letter-spacing:0">of ${res.all.length} priced</span></div>`
     + res.priced.map(edgeRow).join('')
+    + (res.lowvol.length ? `<div class="sechead">${res.lowvol.length} excluded as low volume
+        <span style="float:right;text-transform:none;letter-spacing:0;color:var(--t3)">
+        projected below a bettable floor</span></div>
+      <div class="note" style="margin-bottom:10px">Deep reserves and situational players. The
+        projection can't be trusted at this volume and plus-money prices inflate the EV.</div>` : '')
     + (res.suspect.length ? `<div class="sechead" style="color:var(--r)">
         ${res.suspect.length} quarantined — model over 90% confident
         <span style="float:right;text-transform:none;letter-spacing:0;color:var(--t3)">
@@ -963,7 +999,10 @@ function openEdge(i){
       <div class="note"><b style="color:var(--t);font-size:14px">${b.dir.toUpperCase()} ${p.line} ${MKT[p.market].label}</b>
         at ${am(b.price)}${b.book?' ('+b.book+')':''} · ${p.game}<br>
         Model projects <b style="color:var(--g)">${R(pj.mean,1)}</b>${pj.dist==='poisson'?'':', standard deviation '+R(pj.sd,1)}, scored as a ${pj.dist} outcome.
-        That puts the ${b.dir} at <b>${Math.round(b.p*100)}%</b> against a devigged fair price of
+        Raw model probability is ${Math.round((b.dir==='over'?e.pRaw:1-e.pRaw)*100)}%, but it stands on only
+        ${Math.round(e.opp)} opportunit${Math.round(e.opp)===1?'y':'ies'}, so it carries
+        <b>${Math.round(e.w*100)}%</b> weight against the market. That puts the ${b.dir} at
+        <b>${Math.round(b.p*100)}%</b> against a devigged fair price of
         <b>${Math.round(b.fair*100)}%</b> — an edge of ${R(b.pts,1)} probability points,
         worth ${R(b.ev,1)}% per dollar at this price.
         ${e.fair.fair?`Book hold on this market: ${e.fair.hold}%.`:'Only one side quoted — the fair price still carries vig, so this edge is overstated.'}
@@ -1091,6 +1130,7 @@ $('minev').oninput = e => { S.minev = +e.target.value; render(); };
 $('anchor').oninput = e => { S.anchor = +e.target.value; render(); };
 $('anchor2').oninput = e => { S.anchor = +e.target.value; render(); };
 $('oline').oninput = e => { S.olineImp = +e.target.value; render(); };
+$('trust').oninput = e => { S.trust = +e.target.value; render(); };
 $('lastn').onchange = e => { S.lastn = +e.target.value; load(); };
 $('sort').onchange = e => { S.sort = e.target.value; render(); };
 $('detail').onclick = e => { if (e.target.id === 'detail') closeDetail(); };
@@ -1154,6 +1194,17 @@ $('bGuide').onclick = () => showModal(`<h2>How this works</h2>
      <i>below</i> the projection. Treating them as normal would inflate every OVER, which is the
      most common way a homemade prop model loses money. Receptions use Poisson, since it's a small
      count rather than a continuous quantity.</p>
+
+  <h4>Model trust</h4>
+  <p>The market prices these props with information the model doesn't have. So the model's
+     probability is blended toward the market's, weighted by the sample it stands on:
+     <code>trust x n/(n+15)</code> in opportunities — targets, carries or attempts.</p>
+  <p>A receiver with 6 targets barely moves the number. The same receiver with 60 targets in
+     December carries real weight. That's deliberate: the board should be quiet early in the season
+     and more assertive once the data has earned it. If it prints dozens of edges in Week 3,
+     it's lying to you.</p>
+  <p>Trust at 0 reproduces the market exactly. At 100 the model still gets shrunk by sample size,
+     just without the extra haircut. 50 is a reasonable default.</p>
 
   <h4>Calibration</h4>
   <p>Across a full slate the model should sit close to the market on average. The market is not
