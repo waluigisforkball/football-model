@@ -1,5 +1,5 @@
 /**
- * NFL Slate — data worker  (v2.3)
+ * NFL Slate — data worker  (v2.4)
  *
  * Bindings required (Cloudflare dashboard → Worker → Settings):
  *   KV namespace : ODDS_CACHE
@@ -350,6 +350,13 @@ async function playerRates(url) {
       target_share: ts !== null ? +ts.toFixed(4) : null,
       carry_share:  cs !== null ? +cs.toFixed(4) : null,
       snap_pct:     sp !== null ? +sp.toFixed(3) : null,
+      // highest single-game snap share in the window: a role signal one early exit can't fake
+      snap_max: (() => { const v = ws.map(w => w.snap_pct).filter(x => x !== null && x !== undefined);
+                         return v.length ? +Math.max.apply(null, v).toFixed(3) : null; })(),
+      // games in the window at under half his best snap share (left early, eased back in)
+      short_games: (() => { const v = ws.map(w => w.snap_pct).filter(x => x !== null && x !== undefined);
+                            const mx = v.length ? Math.max.apply(null, v) : 0;
+                            return mx >= 0.5 ? v.filter(x => x < mx * 0.5).length : 0; })(),
     };
   };
 
