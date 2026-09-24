@@ -178,7 +178,7 @@ textarea.inp{height:300px;resize:vertical;line-height:1.55}
 
 <div class="hdr">
   <div class="hdr-top">
-    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.12</span>
+    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.13</span>
     <div class="wk"><button id="wPrev">‹</button><div class="lbl" id="wLbl">Week —</div><button id="wNext">›</button></div>
     <div class="spacer"></div>
     <button class="btn pull" id="bPull">↓ Pull odds</button>
@@ -787,7 +787,11 @@ function buildEdges(){
        model by the sample it's standing on: w = trust x n/(n+K) in opportunities.
        At 6 targets the model barely moves the number; at 60 it carries real weight.
        This is why the board is quiet in September and louder in December. */
-    const opp = oppCount(pr.market, pj.meta);
+    // Trust is earned by THIS season's opportunities only. A returning player's
+    // 2025 targets are already inside his prior; counting them again as evidence
+    // gave a no-games-yet player 40% trust.
+    const curMeta = playerIndex().cur.get(normName(pr.player));
+    const opp = curMeta ? oppCount(pr.market, curMeta) : 0;
     const w = (S.trust/100) * (opp/(opp + trustK(pr.market)));
     const pFairOver = dv.over !== null ? dv.over : 1 - dv.under;
     const pModelOver = w*pRaw + (1-w)*pFairOver;
@@ -893,7 +897,8 @@ function edgeBadges(pr, g, pj, best, dv){
   // Sample size that matters is opportunities, not games played.
   const w = S.lastn >= 99 ? 'season' : 'last';
   const st = m[w] || m.season;
-  const opp = oppCount(pr.market, m);
+  const cm = playerIndex().cur.get(normName(pr.player));
+  const opp = cm ? oppCount(pr.market, cm) : 0;
   if (opp < 8) b.push(['warn', `${Math.round(opp)} opp`]);
   if ((m.weeks_played || 0) < 2) b.push(['warn','1 game']);
   if (m.snap_drift !== null && Math.abs(m.snap_drift) > 0.15) b.push(['warn','role']);
