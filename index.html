@@ -178,7 +178,7 @@ textarea.inp{height:300px;resize:vertical;line-height:1.55}
 
 <div class="hdr">
   <div class="hdr-top">
-    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.4</span>
+    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.5</span>
     <div class="wk"><button id="wPrev">‹</button><div class="lbl" id="wLbl">Week —</div><button id="wNext">›</button></div>
     <div class="spacer"></div>
     <button class="btn pull" id="bPull">↓ Pull odds</button>
@@ -230,15 +230,45 @@ const store = {
 };
 let WORKER = store.get('nflslate.worker', DEFAULT_WORKER);
 
-/* Team-rate shrinkage: games until current season outweighs the prior. */
-const K = { plays:3, pass_rate:3, adot:5, sack_rate:5, ypa:8, ypc:8, points:6 };
-/* Player-rate shrinkage. Usage shares stabilize fast; efficiency does not. */
-const PK = { share:3, volume:3, ypa:8, ypc:8, ypt:7, catch_rate:5 };
+/* Shrinkage is counted in OPPORTUNITIES, not games: k is how many attempts /
+   carries / targets it takes before this season outweighs the prior. Values are
+   the old game-based k converted at league-average volume, so a typical team or
+   player lands where it did before — high-volume ones now stabilize faster,
+   low-volume ones slower. Per-game rates (plays, points) stay in games.
+   `n` returns the opportunity count behind a rate; the fallbacks cover a worker
+   response that predates the raw totals. */
+const tot = (r, total, perGame) => (r[total] !== undefined && r[total] !== null)
+  ? r[total] : (r[perGame] || 0) * (r.games || 0);
+
+const K = {
+  plays_pg:  { k:3,   n:r => r.games || 0 },
+  points_pg: { k:6,   n:r => r.games || 0 },
+  pass_rate: { k:185, n:r => tot(r,'plays','plays_pg') },          // plays
+  sack_rate: { k:180, n:r => tot(r,'dropbacks','dropbacks_pg') },  // dropbacks
+  adot:      { k:165, n:r => tot(r,'attempts','attempts_pg') },    // attempts
+  ypa:       { k:265, n:r => tot(r,'attempts','attempts_pg') },    // attempts
+  ypc:       { k:210, n:r => tot(r,'carries','carries_pg') },      // carries
+};
+/* Player shares shrink on the TEAM's opportunities in his games (a share is a
+   fraction of those); efficiency shrinks on his own. Efficiency k is large on
+   purpose — yards per carry is close to noise until a big sample. */
+const PK = {
+  att_share:    { k:100, n:s => s.team_att     ?? (s.att_share ? tot(s,'att','att_pg')/s.att_share : 0) },
+  target_share: { k:100, n:s => s.team_targets ?? (s.target_share ? tot(s,'targets','targets_pg')/s.target_share : 0) },
+  carry_share:  { k:75,  n:s => s.team_carries ?? (s.carry_share ? tot(s,'carries','carries_pg')/s.carry_share : 0) },
+  ypa:          { k:250, n:s => tot(s,'att','att_pg') },
+  ypc:          { k:110, n:s => tot(s,'carries','carries_pg') },
+  ypt:          { k:50,  n:s => tot(s,'targets','targets_pg') },
+  catch_rate:   { k:30,  n:s => tot(s,'targets','targets_pg') },
+};
+
+/* Pass-rate change per point of projected margin beyond the team's norm. */
+const SCRIPT_K = 0.004;
 
 const FALLBACK = { plays_pg:61.3, pass_rate:.562, adot:7.8, sack_rate:.069, ypa:7.04, ypc:4.34, points_pg:23.0 };
 /* Position defaults — the floor priors under every player rate. */
 const POS_DEF = {
-  QB:{ ypa:7.0, att_share:0.95 },
+  QB:{ ypa:7.0, att_share:0.97 },
   RB:{ carry_share:0.45, ypc:4.3, target_share:0.09, ypt:6.3, catch_rate:0.76 },
   WR:{ target_share:0.16, ypt:8.2, catch_rate:0.63 },
   TE:{ target_share:0.13, ypt:7.6, catch_rate:0.70 },
@@ -326,12 +356,13 @@ function blendPrior(cur, n, prior, k){
   return cur*w + prior*(1-w);
 }
 
-function teamRate(team, side, key, kKey){
+function teamRate(team, side, key){
   const c = S.rates.teams && S.rates.teams[team] ? S.rates.teams[team][side] : null;
   const p = S.prior.teams && S.prior.teams[team] ? S.prior.teams[team][side] : null;
   const lg = (S.prior.league && S.prior.league[key] !== undefined) ? S.prior.league[key] : FALLBACK[key];
   const priorV = (p && p[key] !== null && p[key] !== undefined) ? p[key] : lg;
-  return blendPrior(c ? c[key] : null, c ? c.games : 0, priorV, K[kKey] || 5);
+  const spec = K[key] || { k:5, n:r => r.games || 0 };
+  return blendPrior(c ? c[key] : null, c ? spec.n(c) : 0, priorV, spec.k);
 }
 
 const normName = s => (s||'').toLowerCase().replace(/[.'`\-]/g,'')
@@ -346,18 +377,33 @@ function playerIndex(){
   return _pIndex;
 }
 
-/** Blended player rate: this season's window → last season → position default. */
-function playerRate(name, pos, key, kKey){
+/** A stat line's value for `key`. att_share falls back to att_pg / team attempts_pg
+    for a worker that predates the real field. */
+function statVal(st, key, team, rates){
+  if (!st) return null;
+  const v = st[key];
+  if (v !== null && v !== undefined) return v;
+  if (key === 'att_share' && st.att_pg) {
+    const t = rates && rates.teams && rates.teams[team] && rates.teams[team].offense;
+    if (t && t.attempts_pg) return clamp(st.att_pg / t.attempts_pg, 0, 1);
+  }
+  return null;
+}
+
+/** Blended player rate: this season's window → last season → position default.
+    Both blends are weighted by opportunities (see PK), not games. */
+function playerRate(name, pos, key){
   const ix = playerIndex();
   const n = normName(name);
   const c = ix.cur.get(n), pr = ix.prior.get(n);
   const win = S.lastn >= 99 ? 'season' : 'last';
-  const cv = c && c[win] ? c[win][key] : null;
-  const cn = c && c[win] ? c[win].games : 0;
-  const pv = pr && pr.season ? pr.season[key] : null;
+  const spec = PK[key] || { k:5, n:s => s.games || 0 };
+  const cs = c && c[win] ? c[win] : null, ps = pr && pr.season ? pr.season : null;
+  const cv = statVal(cs, key, c && c.team, S.rates);
+  const pv = statVal(ps, key, pr && pr.team, S.prior);
   const def = (POS_DEF[pos] || {})[key];
-  const priorV = (pv !== null && pv !== undefined) ? blendPrior(pv, pr.season.games, def, 6) : def;
-  return blendPrior(cv, cn, priorV, PK[kKey] || 5);
+  const priorV = (pv !== null && pv !== undefined) ? blendPrior(pv, spec.n(ps), def, spec.k) : def;
+  return blendPrior(cv, cs ? spec.n(cs) : 0, priorV, spec.k);
 }
 
 function playerMeta(name){
@@ -373,8 +419,8 @@ function marketImplied(g){
   return { home:g.total/2 + g.spread/2, away:g.total/2 - g.spread/2 };
 }
 function modelPoints(team, opp){
-  const o = teamRate(team,'offense','points_pg','points');
-  const d = teamRate(opp,'defense','points_pg','points');
+  const o = teamRate(team,'offense','points_pg');
+  const d = teamRate(opp,'defense','points_pg');
   if (o === null && d === null) return null;
   if (o === null) return d; if (d === null) return o;
   return (o+d)/2;
@@ -404,31 +450,36 @@ function project(g){
   const wf = windFactor(g);
 
   const side = (team, opp, myPts, oppPts) => {
-    const oP = teamRate(team,'offense','plays_pg','plays');
-    const dP = teamRate(opp,'defense','plays_pg','plays');
+    const oP = teamRate(team,'offense','plays_pg');
+    const dP = teamRate(opp,'defense','plays_pg');
     const plays = (oP !== null && dP !== null) ? (oP+dP)/2 : (oP !== null ? oP : (dP !== null ? dP : FALLBACK.plays_pg));
-    const oR = teamRate(team,'offense','pass_rate','pass_rate');
-    const dR = teamRate(opp,'defense','pass_rate','pass_rate');
+    const oR = teamRate(team,'offense','pass_rate');
+    const dR = teamRate(opp,'defense','pass_rate');
     let pr = (oR !== null && dR !== null) ? oR*0.7 + dR*0.3 : (oR !== null ? oR : (dR !== null ? dR : FALLBACK.pass_rate));
+    /* Script. The team's season pass rate already reflects the scripts it has
+       played, so only adjust for the margin BEYOND its usual one, and gently:
+       ~0.4 pt of pass rate per point of excess margin. */
     const margin = (myPts !== null && oppPts !== null) ? myPts-oppPts : 0;
-    pr = clamp(pr - margin*0.010, .38, .75);
+    const pf = teamRate(team,'offense','points_pg'), pa = teamRate(team,'defense','points_pg');
+    const usual = (pf !== null && pa !== null) ? pf - pa : 0;
+    pr = clamp(pr - (margin - usual)*SCRIPT_K, .38, .75);
 
     const ol = olineFactor(team);
     const dropbacks = plays*pr;
-    const sackRate = (teamRate(team,'offense','sack_rate','sack_rate') || FALLBACK.sack_rate) * (1 + ol.sev*0.25);
+    const sackRate = (teamRate(team,'offense','sack_rate') || FALLBACK.sack_rate) * (1 + ol.sev*0.25);
     const att = dropbacks*(1-sackRate);
     const carries = plays - dropbacks;
     // opponent pass defense: blend own YPA with what this defense allows
-    const oYpa = teamRate(team,'offense','ypa','ypa') || FALLBACK.ypa;
-    const dYpa = teamRate(opp,'defense','ypa','ypa') || FALLBACK.ypa;
+    const oYpa = teamRate(team,'offense','ypa') || FALLBACK.ypa;
+    const dYpa = teamRate(opp,'defense','ypa') || FALLBACK.ypa;
     const ypa = (oYpa*0.65 + dYpa*0.35) * wf.mult * ol.mult;
-    const oYpc = teamRate(team,'offense','ypc','ypc') || FALLBACK.ypc;
-    const dYpc = teamRate(opp,'defense','ypc','ypc') || FALLBACK.ypc;
+    const oYpc = teamRate(team,'offense','ypc') || FALLBACK.ypc;
+    const dYpc = teamRate(opp,'defense','ypc') || FALLBACK.ypc;
     const ypc = oYpc*0.65 + dYpc*0.35;
 
     return { team, opp, pts:myPts, plays, pass_rate:pr, dropbacks, att, carries,
              pass_yards:att*ypa, rush_yards:carries*ypc, ypa, ypc, ol,
-             adot:teamRate(team,'offense','adot','adot'), sacks:dropbacks*sackRate };
+             adot:teamRate(team,'offense','adot'), sacks:dropbacks*sackRate };
   };
 
   const home = side(g.home,g.away,ptsH,ptsA), away = side(g.away,g.home,ptsA,ptsH);
@@ -458,10 +509,9 @@ function oppCount(market, meta){
   const w = S.lastn >= 99 ? 'season' : 'last';
   const st = meta[w] || meta.season;
   if (!st) return 0;
-  const per = market === 'player_rush_yds' ? (st.carries_pg||0)
-            : market === 'player_pass_yds' ? (st.att_pg||0)
-            : (st.targets_pg||0);
-  return per * (st.games||0);
+  return market === 'player_rush_yds' ? tot(st,'carries','carries_pg')
+       : market === 'player_pass_yds' ? tot(st,'att','att_pg')
+       : tot(st,'targets','targets_pg');
 }
 
 /* Below these, the projection is standing on nothing worth pricing. */
@@ -480,30 +530,30 @@ function projectProp(pr, g, proj){
   let mean = null, parts = {};
   if (pr.market === 'player_pass_yds') {
     if (pos !== 'QB') return null;
-    const share = clamp(playerRate(pr.player,pos,'att_share','share') || 0.95, 0, 1);
-    const ypa = playerRate(pr.player,pos,'ypa','ypa') || side.ypa;
+    const share = clamp(playerRate(pr.player,pos,'att_share') || 0.97, 0, 1);
+    const ypa = playerRate(pr.player,pos,'ypa') || side.ypa;
     // player's own YPA, tempered by the matchup-adjusted team number
     const useYpa = (ypa*0.6 + side.ypa*0.4);
     mean = side.att * share * useYpa;
     parts = { att:side.att*share, ypa:useYpa, share };
   }
   else if (pr.market === 'player_rush_yds') {
-    const cs = playerRate(pr.player,pos,'carry_share','share');
+    const cs = playerRate(pr.player,pos,'carry_share');
     if (cs === null) return null;
-    const ypc = playerRate(pr.player,pos,'ypc','ypc') || side.ypc;
+    const ypc = playerRate(pr.player,pos,'ypc') || side.ypc;
     const useYpc = (ypc*0.55 + side.ypc*0.45);
     mean = side.carries * cs * useYpc;
     parts = { carries:side.carries*cs, ypc:useYpc, share:cs };
   }
   else if (pr.market === 'player_reception_yds' || pr.market === 'player_receptions') {
-    const ts = playerRate(pr.player,pos,'target_share','share');
+    const ts = playerRate(pr.player,pos,'target_share');
     if (ts === null) return null;
     const tgts = side.att * ts;
     if (pr.market === 'player_receptions') {
-      const cr = playerRate(pr.player,pos,'catch_rate','catch_rate') || 0.65;
+      const cr = playerRate(pr.player,pos,'catch_rate') || 0.65;
       mean = tgts*cr; parts = { targets:tgts, catch_rate:cr, share:ts };
     } else {
-      const ypt = playerRate(pr.player,pos,'ypt','ypt') || 8.0;
+      const ypt = playerRate(pr.player,pos,'ypt') || 8.0;
       // O-line pressure compresses aDOT: receivers lose, backs gain slightly
       const olAdj = pos === 'RB' ? (1 + side.ol.sev*0.06) : side.ol.mult;
       mean = tgts*ypt*olAdj; parts = { targets:tgts, ypt, share:ts, olAdj };
@@ -566,20 +616,68 @@ function buildEdges(){
   const clean = out.filter(e => suspect.indexOf(e) < 0 && lowvol.indexOf(e) < 0);
   const priced = clean.filter(e => e.best.ev >= S.minev).sort((a,b) => b.best.ev - a.best.ev);
 
-  /* Calibration. Across a whole slate the model should land close to the market
-     on average — the market is not systematically wrong in one direction. If the
-     mean model P(over) sits well away from the mean fair P(over), that is model
-     bias showing up many times, not many independent edges. */
-  let cal = null;
-  const withFair = clean.filter(e => e.fair.fair && e.fair.over !== null);
-  if (withFair.length >= 15) {
-    const mm = withFair.reduce((s,e) => s + e.pOverModel, 0) / withFair.length;
-    const mf = withFair.reduce((s,e) => s + e.fair.over, 0) / withFair.length;
-    const overs = priced.filter(e => e.best.dir === 'over').length;
-    cal = { model:mm, fair:mf, bias:(mm-mf)*100, n:withFair.length,
-            overShare: priced.length ? overs/priced.length : 0 };
+  const cal = calibrate(clean, priced);
+  if (cal) for (const e of priced) {
+    const m = cal.byMarket[e.prop.market];
+    if (m && m.bad) e.badges.push(['bad', MKT[e.prop.market].label + ' lean']);
   }
   return { priced, all:clean, suspect, lowvol, cal };
+}
+
+/* Calibration, PER MARKET. Within one market the model should land close to the
+   market on average — it isn't systematically wrong in one direction. A mean model
+   P(over) well away from mean fair P(over) is one bias repeated, not many edges.
+   Slate-wide pooling let a -12 pass-yds lean cancel against overs elsewhere.
+   `bias` is the blended probability (what drives the board); `raw` is the
+   unshrunk projection, which shows the underlying miss even when trust hides it. */
+const CAL_MIN = 8, CAL_WARN = 5;
+function calibrate(clean, priced){
+  const groups = {};
+  for (const e of clean) {
+    if (!e.fair.fair || e.fair.over === null) continue;
+    (groups[e.prop.market] = groups[e.prop.market] || []).push(e);
+  }
+  const avg = (xs, f) => xs.reduce((s,x) => s + f(x), 0) / xs.length;
+  const rows = [], byMarket = {};
+  for (const m of Object.keys(MKT)) {
+    const xs = groups[m]; if (!xs || !xs.length) continue;
+    const fair = avg(xs, e => e.fair.over);
+    const model = avg(xs, e => e.pOverModel);
+    const raw = avg(xs, e => e.pRaw);
+    const pm = priced.filter(e => e.prop.market === m);
+    const enough = xs.length >= CAL_MIN;
+    const bias = (model - fair) * 100;
+    const row = { market:m, n:xs.length, fair, model, bias, raw:(raw - fair)*100, enough,
+                  bad: enough && Math.abs(bias) > CAL_WARN, priced:pm.length,
+                  overShare: pm.length ? pm.filter(e => e.best.dir === 'over').length / pm.length : null };
+    rows.push(row); byMarket[m] = row;
+  }
+  return rows.length ? { rows, byMarket, bad:rows.filter(r => r.bad) } : null;
+}
+
+function calHtml(cal){
+  if (!cal) return '';
+  const sg = v => (v > 0 ? '+' : '') + R(v,1);
+  const tr = r => `<tr style="${r.enough?'':'opacity:.5'}">
+      <td>${MKT[r.market].label}${r.bad?' <span style="color:var(--r)">⚠</span>':''}</td>
+      <td>${r.n}</td><td>${Math.round(r.model*100)}%</td><td>${Math.round(r.fair*100)}%</td>
+      <td class="${r.bad?'':'hl'}" style="${r.bad?'color:var(--r);font-weight:600':''}">${r.enough?sg(r.bias):'—'}</td>
+      <td>${sg(r.raw)}</td>
+      <td>${r.overShare===null?'—':Math.round(r.overShare*100)+'% of '+r.priced}</td></tr>`;
+  const bad = cal.bad;
+  const msg = bad.length
+    ? `<b>${bad.map(r => MKT[r.market].label).join(', ')} ${bad.length===1?'leans':'lean'} far enough to be model bias.</b>
+       Every edge in ${bad.length===1?'that market':'those markets'} is flagged — treat them as untrustworthy until the lean is near zero.
+       Other markets are judged on their own.`
+    : `Every market with ${CAL_MIN}+ props is within ±${CAL_WARN} points — the board is worth reading.`;
+  return `<div class="${bad.length?'warn':'note'}" style="margin-bottom:12px">
+    <b>Calibration by market</b> — mean model P(over) vs devigged fair, per market.
+    <div style="overflow-x:auto;margin:6px 0"><table>
+      <tr><th>market</th><th>n</th><th>model</th><th>fair</th><th>lean</th><th>raw</th><th>overs</th></tr>
+      ${cal.rows.map(tr).join('')}</table></div>
+    ${msg}
+    <div style="margin-top:4px;opacity:.8">Lean is after trust-weighting; raw is the unshrunk projection's
+      lean. Greyed rows have under ${CAL_MIN} props — too few to judge.</div></div>`;
 }
 
 function edgeBadges(pr, g, pj, best, dv){
@@ -588,9 +686,7 @@ function edgeBadges(pr, g, pj, best, dv){
   // Sample size that matters is opportunities, not games played.
   const w = S.lastn >= 99 ? 'season' : 'last';
   const st = m[w] || m.season;
-  const opp = st ? (pr.market === 'player_rush_yds' ? (st.carries_pg||0)
-                  : pr.market === 'player_pass_yds' ? (st.att_pg||0)
-                  : (st.targets_pg||0)) * (st.games||0) : 0;
+  const opp = oppCount(pr.market, m);
   if (opp < 8) b.push(['warn', `${Math.round(opp)} opp`]);
   if ((m.weeks_played || 0) < 2) b.push(['warn','1 game']);
   if (m.snap_drift !== null && Math.abs(m.snap_drift) > 0.15) b.push(['warn','role']);
@@ -642,7 +738,7 @@ function whyFactors(e){
     used.push(['flat', `${(pj.parts.share*100).toFixed(1)}% ${pr.market==='player_rush_yds'?'carry':'target'} share`]);
 
   // --- matchup: opponent defense
-  const dYpa = teamRate(opp,'defense','ypa','ypa'), dYpc = teamRate(opp,'defense','ypc','ypc');
+  const dYpa = teamRate(opp,'defense','ypa'), dYpc = teamRate(opp,'defense','ypc');
   if (pr.market === 'player_rush_yds' && dYpc !== null && lg.ypc){
     const d = dYpc - lg.ypc;
     if (Math.abs(d) >= 0.2) used.push([d>0?'up':'down',
@@ -729,8 +825,8 @@ async function loadAll(){
     jget(`/slate?season=${SEASON}&week=${S.week}`),
     jget(`/team-rates?season=${SEASON}`).catch(() => ({teams:{},league:{}})),
     jget(`/team-rates?season=${PRIOR_SEASON}`).catch(() => ({teams:{},league:{}})),
-    jget(`/player-rates?season=${SEASON}&lastn=${S.lastn>=99?10:S.lastn}`).catch(() => ({players:{}})),
-    jget(`/player-rates?season=${PRIOR_SEASON}&lastn=5`).catch(() => ({players:{}})),
+    jget(`/player-rates?season=${SEASON}&lastn=${S.lastn>=99?10:S.lastn}&v=21`).catch(() => ({players:{}})),
+    jget(`/player-rates?season=${PRIOR_SEASON}&lastn=5&v=21`).catch(() => ({players:{}})),
   ]);
   S.games = slate.games || []; S.rates = rates; S.prior = prior;
   S.pRates = pRates; S.pPrior = pPrior; _pIndex = null;
@@ -940,7 +1036,7 @@ function render(){
   const res = buildEdges();
   _edges = res.priced;
   if (!res.priced.length){
-    $('main').innerHTML = `<div class="empty"><b>Nothing clears +${S.minev}% EV this week.</b><br><br>
+    $('main').innerHTML = calHtml(res.cal) + `<div class="empty"><b>Nothing clears +${S.minev}% EV this week.</b><br><br>
       ${res.all.length} props priced, none with an edge worth taking.<br>
       ${res.suspect.length?res.suspect.length+' quarantined as implausible. ':''}${res.lowvol.length?res.lowvol.length+' excluded as low volume.':''}<br>
       In September this is the expected answer — two games of data against a sharp market
@@ -948,22 +1044,7 @@ function render(){
       Lower the threshold to see what's close, or leave it — a flat week is a real answer.</div>`;
     return;
   }
-  let calHtml = '';
-  if (res.cal) {
-    const b = res.cal.bias, bad = Math.abs(b) > 5, sk = res.cal.overShare;
-    calHtml = `<div class="${bad?'warn':'note'}" style="margin-bottom:12px">
-      <b>Calibration:</b> across ${res.cal.n} priced props the model averages
-      ${Math.round(res.cal.model*100)}% to the over against a market fair value of
-      ${Math.round(res.cal.fair*100)}% — a ${b>0?'+':''}${R(b,1)} point ${b>0?'over':'under'} lean.
-      ${Math.round(sk*100)}% of the edges below are overs.
-      ${bad ? '<br><b>This is large enough to be model bias rather than opportunity.</b> '
-            + 'A slate-wide lean in one direction means the projection is off, not that the '
-            + 'market is wrong ' + res.priced.length + ' times. Treat the board as untrustworthy '
-            + 'until the lean is closer to zero.'
-            : 'Small enough to be noise — the board is worth reading.'}
-    </div>`;
-  }
-  $('main').innerHTML = calHtml + `<div class="sechead">${res.priced.length} edges ≥ +${S.minev}% EV
+  $('main').innerHTML = calHtml(res.cal) + `<div class="sechead">${res.priced.length} edges ≥ +${S.minev}% EV
       <span style="float:right;text-transform:none;letter-spacing:0">of ${res.all.length} priced</span></div>`
     + res.priced.map(edgeRow).join('')
     + (res.lowvol.length ? `<div class="sechead">${res.lowvol.length} excluded as low volume
@@ -1102,6 +1183,10 @@ function rundown(){
   const L = [`NFL SLATE — Week ${S.week} (${SEASON})`,
              `anchor ${S.anchor}% · min EV +${S.minev}% · ${S.lastn>=99?'season':'L'+S.lastn} window`, ''];
   const res = buildEdges();
+  if (res.cal) {
+    L.push('Calibration (lean vs fair, pts): ' + res.cal.rows.map(r =>
+      `${MKT[r.market].label} ${r.enough ? (r.bias>0?'+':'')+R(r.bias,1) : 'n/a'}${r.bad?' ⚠':''}`).join(' · '), '');
+  }
   if (!res.priced || !res.priced.length) L.push('No edges clear the threshold.');
   else for (const e of res.priced){
     const b = e.best, p = e.prop;
@@ -1207,11 +1292,12 @@ $('bGuide').onclick = () => showModal(`<h2>How this works</h2>
      just without the extra haircut. 50 is a reasonable default.</p>
 
   <h4>Calibration</h4>
-  <p>Across a full slate the model should sit close to the market on average. The market is not
+  <p>Within each market the model should sit close to the market on average. The market is not
      systematically wrong in one direction, so if the model averages well above or below fair value
-     across every prop, that is one bias appearing many times rather than many separate edges.
-     The banner reports that lean, and warns when it passes 5 points. A board with a big lean
-     should not be bet off, however many rows it prints.</p>
+     across a market's props, that is one bias appearing many times rather than many separate edges.
+     It's checked <b>per market</b> — pooled across the slate, a pass-yards under lean can cancel
+     against rec-yards overs and hide both. Any market leaning more than 5 points gets a warning and
+     every edge in it is flagged. Markets with under 8 props aren't judged.</p>
 
   <h4>Quarantine</h4>
   <p>Anything the model rates above 90% or below 10% is pulled off the board entirely. Against a
@@ -1239,8 +1325,11 @@ $('bGuide').onclick = () => showModal(`<h2>How this works</h2>
 
   <h4>Shrinkage</h4>
   <p>Player rates blend the selected window toward ${PRIOR_SEASON}, then toward a position baseline,
-     weighted <code>n/(n+k)</code>. Usage shares use k=3, efficiency k=7-8. Efficiency is
-     shrunk hardest because it stabilizes slowest — yards per carry is close to noise.</p>
+     weighted <code>n/(n+k)</code> where n is <b>opportunities</b>, not games. A back with 20 carries
+     over two games has a steadier YPC than one with 6, and now gets more weight. Shares shrink on the
+     team's opportunities in his games (k≈100 team targets), efficiency on his own
+     (YPC k=110 carries, YPT k=50 targets, YPA k=250 attempts). Efficiency is shrunk hardest because
+     it stabilizes slowest.</p>
 
   <h4>Credits</h4>
   <p>Only the Pull odds button spends them, about 4 per game. Results cache on the worker for an
