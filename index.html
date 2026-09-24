@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>NFL Slate</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#000000; --bg2:#1c1c1e; --bg3:#2c2c2e; --bg4:#3a3a3c; --bg5:#48484a;
+  --b1:#3a3a3c; --b2:#48484a;
+  --t:#f5f5f7; --t2:#ebebf5bf; --t3:#ebebf599;
+  /* football accent — orange (baseball model is purple #9333ea) */
+  --g:#ff9f0a; --gd:rgba(255,159,10,.15); --g2:#e08800;
+  --r:#ff453a; --rd:rgba(255,69,58,.15);
+  --bl:#0a84ff; --bld:rgba(10,132,255,.15);
+  --y:#ffd60a; --yd:rgba(255,214,10,.15);
+  --gr:#30d158; --grd:rgba(48,209,88,.15);
+  --pu:#bf5af2; --pud:rgba(191,90,242,.15);
+  --fd:-apple-system,BlinkMacSystemFont,'SF Pro Display','Helvetica Neue',sans-serif;
+  --fb:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',sans-serif;
+  --fm:'IBM Plex Mono','SF Mono',monospace;
+  --r1:8px; --r2:12px; --r3:16px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--t);font-family:var(--fb);font-size:14px;
+     padding-bottom:env(safe-area-inset-bottom)}
+button,select,input{font-family:var(--fb);color:var(--t)}
+
+/* ---------- header ---------- */
+.hdr{position:sticky;top:0;z-index:60;background:rgba(0,0,0,.86);
+     backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);
+     border-bottom:2px solid var(--g);padding:10px 14px 8px}
+.hdr-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.logo{font-family:var(--fd);font-size:21px;font-weight:800;letter-spacing:-.5px;color:var(--g)}
+.logo span{color:var(--t);font-weight:300}
+.spacer{flex:1}
+.btn{background:var(--bg3);border:1px solid var(--b1);border-radius:var(--r1);
+     padding:6px 11px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--bg4)}
+.btn.on{background:var(--gd);border-color:var(--g);color:var(--g)}
+.wk{display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--b1);
+    border-radius:var(--r1);padding:3px 4px}
+.wk button{background:none;border:none;font-size:15px;padding:2px 8px;cursor:pointer;color:var(--t2);border-radius:6px}
+.wk button:hover{background:var(--bg4);color:var(--t)}
+.wk .lbl{font-family:var(--fm);font-size:12px;font-weight:600;min-width:64px;text-align:center}
+
+/* ---------- controls ---------- */
+.ctrl{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:9px}
+.anchor{display:flex;align-items:center;gap:8px;min-width:220px;flex:1;max-width:340px}
+.anchor label{font-size:10px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;white-space:nowrap}
+input[type=range]{-webkit-appearance:none;flex:1;height:3px;border-radius:2px;background:var(--bg4);outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;
+     background:var(--g);cursor:pointer;border:2px solid #000}
+.anchor .val{font-family:var(--fm);font-size:12px;color:var(--g);min-width:34px;text-align:right}
+select{background:var(--bg3);border:1px solid var(--b1);border-radius:var(--r1);padding:5px 8px;font-size:12px;font-weight:600}
+
+/* ---------- status ---------- */
+.status{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 14px;
+        font-size:11px;color:var(--t3);border-bottom:1px solid var(--b1)}
+.conf{display:flex;align-items:center;gap:6px}
+.conf-bar{width:70px;height:4px;border-radius:2px;background:var(--bg4);overflow:hidden}
+.conf-fill{height:100%;background:var(--g);border-radius:2px;transition:width .3s}
+
+/* ---------- board ---------- */
+.main{padding:12px 14px 40px;max-width:1400px;margin:0 auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:11px}
+.card{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r2);padding:12px 13px;
+      cursor:pointer;transition:border-color .15s,transform .15s}
+.card:hover{border-color:var(--g);transform:translateY(-1px)}
+.c-top{display:flex;align-items:flex-start;gap:10px;margin-bottom:9px}
+.matchup{font-family:var(--fd);font-size:16px;font-weight:700;letter-spacing:-.2px;line-height:1.25}
+.matchup .at{color:var(--t3);font-weight:400;margin:0 3px}
+.kick{font-size:10.5px;color:var(--t3);margin-top:2px;font-family:var(--fm)}
+.comp{margin-left:auto;text-align:right;flex-shrink:0}
+.comp-v{font-family:var(--fm);font-size:21px;font-weight:600;line-height:1}
+.comp-l{font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;margin-top:3px}
+
+.lines{display:flex;gap:7px;margin-bottom:9px}
+.line{flex:1;background:var(--bg3);border-radius:var(--r1);padding:6px 8px;text-align:center}
+.line .k{font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px}
+.line .v{font-family:var(--fm);font-size:13px;font-weight:600;margin-top:2px}
+
+.teams{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:9px}
+.tm{background:var(--bg3);border-radius:var(--r1);padding:7px 9px;border-left:2px solid var(--b2)}
+.tm.hot{border-left-color:var(--g)}
+.tm-n{font-family:var(--fd);font-size:12px;font-weight:700;margin-bottom:4px;display:flex;justify-content:space-between;align-items:baseline}
+.tm-n .pts{font-family:var(--fm);font-size:12px;color:var(--g);font-weight:600}
+.tm-r{display:flex;justify-content:space-between;font-size:10.5px;color:var(--t2);font-family:var(--fm);line-height:1.6}
+.tm-r span:first-child{color:var(--t3)}
+
+.chips{display:flex;gap:5px;flex-wrap:wrap}
+.chip{font-size:9.5px;font-weight:600;padding:2.5px 7px;border-radius:6px;background:var(--bg4);
+      color:var(--t2);text-transform:uppercase;letter-spacing:.4px}
+.chip.w{background:var(--bld);color:var(--bl)}
+.chip.d{background:var(--yd);color:var(--y)}
+.chip.a{background:var(--rd);color:var(--r)}
+.chip.g{background:var(--grd);color:var(--gr)}
+.chip.o{background:var(--gd);color:var(--g)}
+
+/* ---------- detail ---------- */
+.detail{position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.6);backdrop-filter:blur(8px);
+        display:none;align-items:flex-end;justify-content:center}
+.detail.open{display:flex}
+.dpanel{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r3) var(--r3) 0 0;
+        width:100%;max-width:760px;max-height:92vh;overflow-y:auto;padding:16px 16px 40px}
+@media(min-width:720px){.detail{align-items:center}.dpanel{border-radius:var(--r3);max-height:86vh}}
+.dhead{display:flex;align-items:center;gap:10px;margin-bottom:14px;position:sticky;top:-16px;
+       background:var(--bg2);padding:4px 0 10px;border-bottom:1px solid var(--b1)}
+.dhead h2{font-family:var(--fd);font-size:19px;margin:0;font-weight:700;letter-spacing:-.3px}
+.sec{margin-bottom:16px}
+.sec h3{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--t3);
+        margin:0 0 8px;font-weight:700}
+table{width:100%;border-collapse:collapse;font-family:var(--fm);font-size:11.5px}
+th{text-align:right;font-weight:600;color:var(--t3);padding:5px 6px;border-bottom:1px solid var(--b1);font-size:10px}
+th:first-child,td:first-child{text-align:left}
+td{padding:5px 6px;border-bottom:1px solid rgba(58,58,60,.5);color:var(--t2)}
+td.hl{color:var(--g);font-weight:600}
+.note{font-size:11.5px;color:var(--t3);line-height:1.55;font-family:var(--fb)}
+.warn{background:var(--rd);border:1px solid var(--r);border-radius:var(--r1);padding:9px 11px;
+      font-size:11.5px;color:var(--t2);line-height:1.5}
+.warn b{color:var(--r)}
+
+/* ---------- modal ---------- */
+.modal{position:fixed;inset:0;z-index:95;background:rgba(0,0,0,.72);backdrop-filter:blur(8px);
+       display:none;align-items:center;justify-content:center;padding:16px}
+.modal.open{display:flex}
+.mpanel{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r3);
+        max-width:620px;width:100%;max-height:84vh;overflow-y:auto;padding:18px}
+.mpanel h2{font-family:var(--fd);font-size:18px;margin:0 0 4px}
+.mpanel h4{font-size:12px;margin:15px 0 5px;color:var(--g);letter-spacing:.3px}
+.mpanel p,.mpanel li{font-size:12.5px;color:var(--t2);line-height:1.6;margin:5px 0}
+.mpanel code{font-family:var(--fm);font-size:11px;background:var(--bg3);padding:1px 5px;border-radius:4px;color:var(--g)}
+.inp{width:100%;background:var(--bg3);border:1px solid var(--b1);border-radius:var(--r1);
+     padding:8px 10px;font-family:var(--fm);font-size:12px;margin-top:6px}
+textarea.inp{height:300px;resize:vertical;line-height:1.55}
+
+.empty{text-align:center;padding:60px 20px;color:var(--t3);font-size:13px}
+.spin{display:inline-block;width:13px;height:13px;border:2px solid var(--bg4);
+      border-top-color:var(--g);border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px}
+@keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-top">
+    <div class="logo">NFL <span>Slate</span></div>
+    <div class="wk">
+      <button id="wPrev">‹</button>
+      <div class="lbl" id="wLbl">Week —</div>
+      <button id="wNext">›</button>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn" id="bRun">⧉ Rundown</button>
+    <button class="btn" id="bSet">⚙</button>
+    <button class="btn" id="bGuide">?</button>
+    <button class="btn" id="bRefresh">↺</button>
+  </div>
+  <div class="ctrl">
+    <div class="anchor">
+      <label>Market anchor</label>
+      <input type="range" id="anchor" min="40" max="100" value="75" step="5">
+      <div class="val" id="anchorV">75%</div>
+    </div>
+    <select id="sort">
+      <option value="comp">Sort: Composite</option>
+      <option value="time">Sort: Kickoff</option>
+      <option value="total">Sort: Total</option>
+      <option value="disagree">Sort: Disagreement</option>
+      <option value="pass">Sort: Pass volume</option>
+    </select>
+  </div>
+</div>
+
+<div class="status" id="status"><span class="spin"></span> loading…</div>
+<div class="main"><div class="grid" id="grid"></div></div>
+
+<div class="detail" id="detail"><div class="dpanel" id="dpanel"></div></div>
+<div class="modal" id="modal"><div class="mpanel" id="mpanel"></div></div>
+
+<script>
+/* =====================================================================
+   CONFIG
+   ===================================================================== */
+const DEFAULT_WORKER = 'https://nfl-data.YOURNAME.workers.dev';
+const SEASON = 2026, PRIOR_SEASON = 2025;
+
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+};
+let WORKER = store.get('nflslate.worker', DEFAULT_WORKER);
+
+/* Shrinkage constants — games until current season outweighs the prior.
+   Volume/rate stats stabilize fast; efficiency stats do not. */
+const K = { plays:3, pass_rate:3, adot:5, sack_rate:5, ypa:8, ypc:8, points:6 };
+
+/* League fallbacks if the rates endpoint fails entirely */
+const FALLBACK = { plays_pg:61.3, pass_rate:.562, adot:7.8, sack_rate:.069, ypa:7.04, ypc:4.34, points_pg:23.0 };
+
+/* Home stadium coordinates for the weather pull */
+const COORDS = {
+ ARI:[33.528,-112.263],ATL:[33.755,-84.401],BAL:[39.278,-76.623],BUF:[42.774,-78.787],
+ CAR:[35.226,-80.853],CHI:[41.863,-87.617],CIN:[39.095,-84.516],CLE:[41.506,-81.699],
+ DAL:[32.748,-97.093],DEN:[39.744,-105.020],DET:[42.340,-83.046],GB:[44.501,-88.062],
+ HOU:[29.685,-95.411],IND:[39.760,-86.164],JAX:[30.324,-81.637],KC:[39.049,-94.484],
+ LA:[33.953,-118.339],LAC:[33.953,-118.339],LV:[36.091,-115.184],MIA:[25.958,-80.239],
+ MIN:[44.974,-93.258],NE:[42.091,-71.264],NO:[29.951,-90.081],NYG:[40.814,-74.074],
+ NYJ:[40.814,-74.074],PHI:[39.901,-75.167],PIT:[40.447,-80.016],SEA:[47.595,-122.332],
+ SF:[37.403,-121.970],TB:[27.976,-82.503],TEN:[36.166,-86.771],WAS:[38.908,-76.864]
+};
+
+/* =====================================================================
+   STATE
+   ===================================================================== */
+const S = { week:null, weeks:[], games:[], rates:{}, prior:{}, injuries:[], wx:{},
+            anchor:75, sort:'comp', loading:false, err:null };
+
+const $ = id => document.getElementById(id);
+const R = (n,d=1) => n===null||n===undefined||!isFinite(n) ? null : +(+n).toFixed(d);
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+
+/* =====================================================================
+   PROJECTION MATH
+   ===================================================================== */
+
+/* Blend current-season observation toward a prior.
+   w = n/(n+k) — at n=0 this returns the prior untouched, which is
+   exactly what Week 1 should do. */
+function blendPrior(cur, n, prior, k){
+  if (prior === null || prior === undefined) return cur ?? null;
+  if (cur === null || cur === undefined || !n) return prior;
+  const w = n / (n + k);
+  return cur * w + prior * (1 - w);
+}
+
+/* Pull a blended rate for one team on one side of the ball */
+function teamRate(team, side, key, kKey){
+  const c = S.rates?.teams?.[team]?.[side] || null;
+  const p = S.prior?.teams?.[team]?.[side] || null;
+  const lg = S.prior?.league?.[key] ?? FALLBACK[key] ?? null;
+  const priorV = p?.[key] ?? lg;
+  return blendPrior(c?.[key] ?? null, c?.games ?? 0, priorV, K[kKey] ?? 5);
+}
+
+function marketImplied(g){
+  if (g.total === null || g.spread === null) return { home:null, away:null };
+  // positive spread_line = home favored
+  return { home: g.total/2 + g.spread/2, away: g.total/2 - g.spread/2 };
+}
+
+/* Model's own points estimate: team offense vs opponent defense, averaged */
+function modelPoints(team, opp){
+  const off = teamRate(team, 'offense', 'points_pg', 'points');
+  const dAl = teamRate(opp, 'defense', 'points_pg', 'points');
+  if (off === null && dAl === null) return null;
+  if (off === null) return dAl;
+  if (dAl === null) return off;
+  return (off + dAl) / 2;
+}
+
+/* Weather multiplier on passing efficiency. Wind is the only variable
+   that reliably matters; temp and rain are mostly public overreaction. */
+function windFactor(g){
+  const roof = (g.roof||'').toLowerCase();
+  if (roof === 'dome' || roof === 'closed') return { mult:1, wind:0, indoor:true };
+  const w = S.wx[g.game_id]?.wind ?? g.wind ?? null;
+  if (w === null) return { mult:1, wind:null, indoor:false };
+  const over = Math.max(0, w - 10);
+  return { mult: clamp(1 - over * 0.011, 0.82, 1), wind:w, indoor:false };
+}
+
+function project(g){
+  const mk = marketImplied(g);
+  const a = S.anchor / 100;
+
+  const mHome = modelPoints(g.home, g.away);
+  const mAway = modelPoints(g.away, g.home);
+
+  const ptsHome = mk.home === null ? mHome : (mHome === null ? mk.home : a*mk.home + (1-a)*mHome);
+  const ptsAway = mk.away === null ? mAway : (mAway === null ? mk.away : a*mk.away + (1-a)*mAway);
+
+  const modelTotal = (mHome !== null && mAway !== null) ? mHome + mAway : null;
+  const disagree = (modelTotal !== null && g.total !== null) ? modelTotal - g.total : null;
+
+  const wf = windFactor(g);
+
+  const side = (team, opp, myPts, oppPts) => {
+    // plays: own offense pace averaged with opponent's plays-allowed
+    const oPlays = teamRate(team,'offense','plays_pg','plays');
+    const dPlays = teamRate(opp,'defense','plays_pg','plays');
+    const plays = (oPlays !== null && dPlays !== null) ? (oPlays+dPlays)/2 : (oPlays ?? dPlays ?? FALLBACK.plays_pg);
+
+    // pass rate: own tendency vs what the opponent induces, then game script.
+    // Favorites run more when ahead — roughly one point of pass rate per point of margin.
+    const oPR = teamRate(team,'offense','pass_rate','pass_rate');
+    const dPR = teamRate(opp,'defense','pass_rate','pass_rate');
+    let pr = (oPR !== null && dPR !== null) ? (oPR*0.7 + dPR*0.3) : (oPR ?? dPR ?? FALLBACK.pass_rate);
+    const margin = (myPts !== null && oppPts !== null) ? myPts - oppPts : 0;
+    pr = clamp(pr - margin * 0.010, 0.38, 0.75);
+
+    const dropbacks = plays * pr;
+    const sackRate = teamRate(team,'offense','sack_rate','sack_rate') ?? FALLBACK.sack_rate;
+    const att = dropbacks * (1 - sackRate);
+    const carries = plays - dropbacks;
+
+    const ypa = (teamRate(team,'offense','ypa','ypa') ?? FALLBACK.ypa) * wf.mult;
+    const ypc = teamRate(team,'offense','ypc','ypc') ?? FALLBACK.ypc;
+    const adot = teamRate(team,'offense','adot','adot');
+
+    return {
+      team, pts: myPts, plays, pass_rate: pr, dropbacks, att, carries,
+      pass_yards: att * ypa, rush_yards: carries * ypc,
+      ypa, ypc, adot, sacks: dropbacks * sackRate
+    };
+  };
+
+  const home = side(g.home, g.away, ptsHome, ptsAway);
+  const away = side(g.away, g.home, ptsAway, ptsHome);
+
+  return { mk, ptsHome, ptsAway, modelTotal, disagree, wf, home, away,
+           plays: home.plays + away.plays };
+}
+
+/* Composite 0–10: how much prop-relevant structure this game has.
+   Disagreement is deliberately excluded — see the guide. */
+function composite(g, p){
+  const maxAtt = Math.max(p.home.att, p.away.att);
+  const passVol = clamp((maxAtt - 27) / 13 * 10, 0, 10);
+  const pace    = clamp((p.plays - 110) / 24 * 10, 0, 10);
+  const script  = clamp(Math.abs(g.spread ?? 0) / 10 * 10, 0, 10);
+
+  let env = 0;
+  if (p.wf.indoor) env += 3;
+  if (p.wf.wind !== null && p.wf.wind >= 13) env += clamp((p.wf.wind - 10) / 12 * 10, 0, 7);
+  if (g.total !== null) env += clamp(Math.abs(g.total - 44) / 8 * 4, 0, 4);
+  env = clamp(env, 0, 10);
+
+  return R(passVol*0.35 + pace*0.25 + script*0.20 + env*0.20, 1);
+}
+
+/* How much of this projection rests on real data vs. league fallbacks */
+function confidence(g){
+  const t = [g.home, g.away];
+  let have = 0, need = 0;
+  for (const tm of t){
+    need += 2;
+    if (S.prior?.teams?.[tm]?.offense) have += 1;
+    if (S.prior?.teams?.[tm]?.defense) have += 1;
+  }
+  const curN = S.rates?.teams?.[g.home]?.offense?.games ?? 0;
+  const base = need ? have/need : 0;
+  // current-season data adds confidence up to +35% as the season matures
+  return clamp(base * 0.65 + clamp(curN/8,0,1) * 0.35, 0, 1);
+}
+
+/* =====================================================================
+   DATA
+   ===================================================================== */
+async function jget(path){
+  const r = await fetch(WORKER.replace(/\/+$/,'') + path);
+  if (!r.ok) throw new Error(`${path} → ${r.status}`);
+  return await r.json();
+}
+
+async function loadWeeks(){
+  const d = await jget(`/weeks?season=${SEASON}`);
+  S.weeks = d.weeks || [];
+  if (S.week === null) S.week = d.current || 1;
+}
+
+async function loadSlate(){
+  const [slate, rates, prior] = await Promise.all([
+    jget(`/slate?season=${SEASON}&week=${S.week}`),
+    jget(`/team-rates?season=${SEASON}`).catch(() => ({ teams:{}, league:{} })),
+    jget(`/team-rates?season=${PRIOR_SEASON}`).catch(() => ({ teams:{}, league:{} })),
+  ]);
+  S.games = slate.games || [];
+  S.rates = rates; S.prior = prior;
+
+  jget(`/injuries?season=${SEASON}&week=${S.week}`)
+    .then(d => { S.injuries = d.injuries || []; render(); })
+    .catch(() => {});
+
+  loadWeather();
+}
+
+/* Open-Meteo, same pattern as the baseball model. Outdoor stadiums only. */
+async function loadWeather(){
+  const out = S.games.filter(g => {
+    const roof = (g.roof||'').toLowerCase();
+    return roof !== 'dome' && roof !== 'closed' && COORDS[g.home] && g.location !== 'Neutral';
+  });
+  await Promise.all(out.map(async g => {
+    const [lat,lon] = COORDS[g.home];
+    const hour = (g.gametime||'13:00').slice(0,2);
+    try{
+      const u = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
+              + `&hourly=wind_speed_10m,temperature_2m,precipitation_probability`
+              + `&wind_speed_unit=mph&temperature_unit=fahrenheit&start_date=${g.gameday}&end_date=${g.gameday}`;
+      const r = await fetch(u);
+      if (!r.ok) return;
+      const d = await r.json();
+      const i = d.hourly.time.findIndex(t => t.startsWith(`${g.gameday}T${hour}`));
+      if (i < 0) return;
+      S.wx[g.game_id] = {
+        wind: Math.round(d.hourly.wind_speed_10m[i]),
+        temp: Math.round(d.hourly.temperature_2m[i]),
+        precip: d.hourly.precipitation_probability?.[i] ?? null
+      };
+    }catch(e){}
+  }));
+  render();
+}
+
+async function load(){
+  S.loading = true; S.err = null; render();
+  try{
+    if (!S.weeks.length) await loadWeeks();
+    await loadSlate();
+  }catch(e){ S.err = e.message; }
+  S.loading = false; render();
+}
+
+/* =====================================================================
+   RENDER
+   ===================================================================== */
+function fmtKick(g){
+  const [h,m] = (g.gametime||'13:00').split(':').map(Number);
+  const ap = h >= 12 ? 'PM' : 'AM';
+  const hh = h % 12 === 0 ? 12 : h % 12;
+  const wd = (g.weekday||'').slice(0,3);
+  return `${wd} ${hh}:${String(m).padStart(2,'0')} ${ap} ET`;
+}
+
+function spreadTxt(g){
+  if (g.spread === null) return '—';
+  return g.spread > 0 ? `${g.home} -${g.spread}` : g.spread < 0 ? `${g.away} -${Math.abs(g.spread)}` : 'PK';
+}
+
+function compColor(v){
+  if (v >= 7) return 'var(--g)';
+  if (v >= 5) return 'var(--y)';
+  return 'var(--t3)';
+}
+
+function gameChips(g, p){
+  const c = [];
+  const wx = S.wx[g.game_id];
+  if (p.wf.indoor) c.push(['d','dome']);
+  else if (wx && wx.wind >= 13) c.push(['w',`${wx.wind} mph wind`]);
+  else if (wx) c.push(['', `${wx.wind} mph · ${wx.temp}°`]);
+  if (wx && wx.precip !== null && wx.precip >= 50) c.push(['w',`${wx.precip}% precip`]);
+  if (g.div_game) c.push(['','div']);
+  if (g.location === 'Neutral') c.push(['o','neutral site']);
+  const rd = (g.home_rest||7) - (g.away_rest||7);
+  if (Math.abs(rd) >= 3) c.push(['g', `${rd>0?g.home:g.away} +${Math.abs(rd)}d rest`]);
+  if ((g.home_rest||7) <= 4 || (g.away_rest||7) <= 4) c.push(['a','short week']);
+  const inj = S.injuries.filter(i => (i.team===g.home||i.team===g.away)
+      && /out|doubtful|questionable/i.test(i.status)
+      && /QB|RB|WR|TE/.test(i.position||''));
+  if (inj.length) c.push(['a', `${inj.length} skill inj`]);
+  if (p.disagree !== null && Math.abs(p.disagree) >= 4) c.push(['a', `model ${p.disagree>0?'+':''}${R(p.disagree,1)}`]);
+  return c.map(([cl,txt]) => `<span class="chip ${cl}">${txt}</span>`).join('');
+}
+
+function card(g){
+  const p = project(g);
+  const comp = composite(g, p);
+  const hotH = p.home.att >= p.away.att;
+  return `<div class="card" data-id="${g.game_id}">
+    <div class="c-top">
+      <div>
+        <div class="matchup">${g.away}<span class="at">@</span>${g.home}</div>
+        <div class="kick">${fmtKick(g)}</div>
+      </div>
+      <div class="comp">
+        <div class="comp-v" style="color:${compColor(comp)}">${comp.toFixed(1)}</div>
+        <div class="comp-l">composite</div>
+      </div>
+    </div>
+    <div class="lines">
+      <div class="line"><div class="k">spread</div><div class="v">${spreadTxt(g)}</div></div>
+      <div class="line"><div class="k">total</div><div class="v">${g.total ?? '—'}</div></div>
+      <div class="line"><div class="k">plays</div><div class="v">${R(p.plays,0) ?? '—'}</div></div>
+    </div>
+    <div class="teams">
+      ${[[p.away,!hotH],[p.home,hotH]].map(([s,hot]) => `
+        <div class="tm ${hot?'hot':''}">
+          <div class="tm-n"><span>${s.team}</span><span class="pts">${R(s.pts,1) ?? '—'}</span></div>
+          <div class="tm-r"><span>pass att</span><span>${R(s.att,0)}</span></div>
+          <div class="tm-r"><span>pass yds</span><span>${R(s.pass_yards,0)}</span></div>
+          <div class="tm-r"><span>carries</span><span>${R(s.carries,0)}</span></div>
+          <div class="tm-r"><span>rush yds</span><span>${R(s.rush_yards,0)}</span></div>
+        </div>`).join('')}
+    </div>
+    <div class="chips">${gameChips(g,p)}</div>
+  </div>`;
+}
+
+function sortGames(list){
+  const key = {
+    comp: g => -composite(g, project(g)),
+    time: g => `${g.gameday} ${g.gametime}`,
+    total: g => -(g.total ?? 0),
+    disagree: g => -Math.abs(project(g).disagree ?? 0),
+    pass: g => { const p = project(g); return -Math.max(p.home.att, p.away.att); },
+  }[S.sort];
+  return [...list].sort((a,b) => { const x = key(a), y = key(b); return x < y ? -1 : x > y ? 1 : 0; });
+}
+
+function render(){
+  $('wLbl').textContent = S.week ? `Week ${S.week}` : 'Week —';
+  $('anchorV').textContent = S.anchor + '%';
+
+  if (S.loading){ $('status').innerHTML = '<span class="spin"></span> loading slate…'; $('grid').innerHTML = ''; return; }
+  if (S.err){
+    $('status').innerHTML = `<span style="color:var(--r)">✕ ${S.err}</span>`;
+    $('grid').innerHTML = `<div class="empty">Couldn't reach the worker.<br><br>
+      Set your worker URL with the ⚙ button.<br>Current: <code>${WORKER}</code></div>`;
+    return;
+  }
+
+  const conf = S.games.length ? S.games.reduce((s,g) => s + confidence(g), 0) / S.games.length : 0;
+  const curGames = S.rates?.teams?.[S.games[0]?.home]?.offense?.games ?? 0;
+  $('status').innerHTML = `
+    <span>${S.games.length} games</span>
+    <span class="conf">data confidence
+      <span class="conf-bar"><span class="conf-fill" style="width:${Math.round(conf*100)}%"></span></span>
+      ${Math.round(conf*100)}%</span>
+    <span>priors: ${PRIOR_SEASON} · current: ${curGames}g</span>
+    ${S.injuries.length ? `<span>${S.injuries.length} injury rows</span>` : ''}`;
+
+  $('grid').innerHTML = S.games.length
+    ? sortGames(S.games).map(card).join('')
+    : '<div class="empty">No games for this week.</div>';
+
+  document.querySelectorAll('.card').forEach(el =>
+    el.onclick = () => openDetail(el.dataset.id));
+}
+
+/* ---------- detail ---------- */
+function openDetail(id){
+  const g = S.games.find(x => x.game_id === id);
+  if (!g) return;
+  const p = project(g);
+  const comp = composite(g, p);
+  const conf = confidence(g);
+  const wx = S.wx[g.game_id];
+  const inj = S.injuries.filter(i => (i.team===g.home||i.team===g.away) && /out|doubtful|questionable/i.test(i.status));
+
+  const row = (label, aVal, hVal, hl) =>
+    `<tr><td>${label}</td><td class="${hl?'hl':''}">${aVal}</td><td class="${hl?'hl':''}">${hVal}</td></tr>`;
+
+  $('dpanel').innerHTML = `
+    <div class="dhead">
+      <h2>${g.away} @ ${g.home}</h2>
+      <div class="spacer"></div>
+      <div style="font-family:var(--fm);font-size:18px;color:${compColor(comp)}">${comp.toFixed(1)}</div>
+      <button class="btn" onclick="closeDetail()">✕</button>
+    </div>
+
+    <div class="sec">
+      <h3>Market</h3>
+      <div class="note">${spreadTxt(g)} · total ${g.total ?? '—'} · ${fmtKick(g)} · ${g.stadium || ''}<br>
+      ${g.away_qb || '?'} vs ${g.home_qb || '?'} · ${g.roof || 'outdoors'}, ${g.surface || '?'}
+      ${wx ? ` · ${wx.wind} mph wind, ${wx.temp}°F` : ''}</div>
+    </div>
+
+    ${p.disagree !== null && Math.abs(p.disagree) >= 4 ? `
+    <div class="sec"><div class="warn">
+      <b>Model disagrees by ${R(Math.abs(p.disagree),1)} points</b> (model ${R(p.modelTotal,1)} vs market ${g.total}).
+      In a market this sharp, a gap this size is more often stale inputs on your side than a real edge.
+      Check injuries and personnel before trusting it.
+    </div></div>` : ''}
+
+    <div class="sec">
+      <h3>Projection</h3>
+      <table>
+        <tr><th></th><th>${g.away}</th><th>${g.home}</th></tr>
+        ${row('Market implied pts', R(p.mk.away,1) ?? '—', R(p.mk.home,1) ?? '—')}
+        ${row('Model pts', R(modelPoints(g.away,g.home),1) ?? '—', R(modelPoints(g.home,g.away),1) ?? '—')}
+        ${row(`Blended (${S.anchor}% market)`, R(p.ptsAway,1) ?? '—', R(p.ptsHome,1) ?? '—', true)}
+        ${row('Plays', R(p.away.plays,1), R(p.home.plays,1))}
+        ${row('Pass rate', (p.away.pass_rate*100).toFixed(1)+'%', (p.home.pass_rate*100).toFixed(1)+'%')}
+        ${row('Dropbacks', R(p.away.dropbacks,1), R(p.home.dropbacks,1))}
+        ${row('Pass attempts', R(p.away.att,1), R(p.home.att,1), true)}
+        ${row('Sacks allowed', R(p.away.sacks,1), R(p.home.sacks,1))}
+        ${row('Yards/att', R(p.away.ypa,2), R(p.home.ypa,2))}
+        ${row('Pass yards', R(p.away.pass_yards,0), R(p.home.pass_yards,0), true)}
+        ${row('Carries', R(p.away.carries,1), R(p.home.carries,1))}
+        ${row('Yards/carry', R(p.away.ypc,2), R(p.home.ypc,2))}
+        ${row('Rush yards', R(p.away.rush_yards,0), R(p.home.rush_yards,0), true)}
+        ${row('aDOT', R(p.away.adot,1) ?? '—', R(p.home.adot,1) ?? '—')}
+      </table>
+    </div>
+
+    <div class="sec">
+      <h3>How this was built</h3>
+      <div class="note">
+        Team points start from the market (${S.anchor}% weight) and blend toward a rate model built on
+        ${PRIOR_SEASON} offense-vs-defense, shrunk by games played.
+        Plays average this offense's pace against the opponent's plays-allowed.
+        Pass rate blends tendency (70%) with what the defense induces (30%), then shifts
+        1 point per point of projected margin — favorites run more.
+        ${p.wf.indoor ? 'Indoor, so no wind adjustment.'
+          : p.wf.mult < 1 ? `Wind trims passing efficiency by ${Math.round((1-p.wf.mult)*100)}%.` : 'No meaningful wind.'}
+        <br><br>Data confidence: <b style="color:var(--g)">${Math.round(conf*100)}%</b>.
+      </div>
+    </div>
+
+    ${inj.length ? `<div class="sec"><h3>Injury report</h3><table>
+      ${inj.slice(0,18).map(i => `<tr><td>${i.team} ${i.position||''} ${i.name}</td>
+        <td colspan="2" style="text-align:right">${i.status}${i.injury ? ' · '+i.injury : ''}</td></tr>`).join('')}
+    </table></div>` : ''}
+
+    <div class="sec">
+      <h3>Next layer</h3>
+      <div class="note">Player-level distribution (target share, carry share, prop lines) lands here.
+      These team totals are the denominators everything downstream divides.</div>
+    </div>`;
+  $('detail').classList.add('open');
+}
+function closeDetail(){ $('detail').classList.remove('open'); }
+
+/* ---------- rundown ---------- */
+function rundown(){
+  const lines = [`NFL SLATE — Week ${S.week} (${SEASON})`,
+                 `market anchor ${S.anchor}%  ·  priors ${PRIOR_SEASON}`, ''];
+  for (const g of sortGames(S.games)){
+    const p = project(g);
+    const c = composite(g, p);
+    lines.push(`${c.toFixed(1)}  ${g.away} @ ${g.home}  (${spreadTxt(g)}, ${g.total ?? '—'})`);
+    lines.push(`      ${g.away}: ${R(p.away.pts,1)} pts · ${R(p.away.att,0)} att / ${R(p.away.pass_yards,0)} pyd · ${R(p.away.carries,0)} car / ${R(p.away.rush_yards,0)} ryd`);
+    lines.push(`      ${g.home}: ${R(p.home.pts,1)} pts · ${R(p.home.att,0)} att / ${R(p.home.pass_yards,0)} pyd · ${R(p.home.carries,0)} car / ${R(p.home.rush_yards,0)} ryd`);
+    const wx = S.wx[g.game_id];
+    const notes = [];
+    if (p.wf.indoor) notes.push('dome');
+    else if (wx) notes.push(`${wx.wind}mph ${wx.temp}F`);
+    if (p.disagree !== null && Math.abs(p.disagree) >= 4) notes.push(`model ${p.disagree>0?'+':''}${R(p.disagree,1)} vs market`);
+    if (notes.length) lines.push(`      ${notes.join(' · ')}`);
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
+function showModal(html){ $('mpanel').innerHTML = html; $('modal').classList.add('open'); }
+function closeModal(){ $('modal').classList.remove('open'); }
+
+/* =====================================================================
+   EVENTS
+   ===================================================================== */
+$('wPrev').onclick = () => { if (S.week > 1){ S.week--; load(); } };
+$('wNext').onclick = () => { if (S.week < 18){ S.week++; load(); } };
+$('bRefresh').onclick = load;
+$('anchor').oninput = e => { S.anchor = +e.target.value; render(); };
+$('sort').onchange = e => { S.sort = e.target.value; render(); };
+$('detail').onclick = e => { if (e.target.id === 'detail') closeDetail(); };
+$('modal').onclick = e => { if (e.target.id === 'modal') closeModal(); };
+
+$('bRun').onclick = () => showModal(`
+  <h2>Rundown — Week ${S.week}</h2>
+  <textarea class="inp" id="rdText" readonly>${rundown()}</textarea>
+  <div style="display:flex;gap:8px;margin-top:10px">
+    <button class="btn on" onclick="navigator.clipboard.writeText(document.getElementById('rdText').value)">⧉ Copy</button>
+    <button class="btn" onclick="closeModal()">Close</button>
+  </div>`);
+
+$('bSet').onclick = () => showModal(`
+  <h2>Settings</h2>
+  <h4>Worker URL</h4>
+  <p>Your Cloudflare Worker running <code>nfl-data-worker.js</code>. nflverse release assets send no CORS
+     headers, so the browser can't fetch them directly — the worker proxies and pre-aggregates them.</p>
+  <input class="inp" id="wkInp" value="${WORKER}" spellcheck="false">
+  <div style="display:flex;gap:8px;margin-top:12px">
+    <button class="btn on" onclick="saveWorker()">Save & reload</button>
+    <button class="btn" onclick="closeModal()">Cancel</button>
+  </div>`);
+
+function saveWorker(){
+  WORKER = $('wkInp').value.trim();
+  store.set('nflslate.worker', WORKER);
+  closeModal(); load();
+}
+
+$('bGuide').onclick = () => showModal(`
+  <h2>How to read this board</h2>
+  <p>Every projection starts from the market and distributes within it. The market has the game's
+     shape right; what it prices loosely is the distribution inside that shape. That's the edge this
+     board is pointed at.</p>
+
+  <h4>Market anchor</h4>
+  <p>How much the team-points projection leans on the implied totals versus the rate model.
+     The floor is 40% on purpose — NFL sides and totals are the sharpest markets in sports, and a
+     homegrown rating that fully overrides them is usually wrong.</p>
+
+  <h4>Composite (0–10)</h4>
+  <p>How much prop-relevant structure a game has, <i>not</i> a bet signal. Pass volume 35%,
+     pace 25%, game script 20%, environment 20%. A 7+ game has the volume, the script, or the
+     weather to create prop mispricings worth digging into.</p>
+
+  <h4>Disagreement</h4>
+  <p>Model total minus market total. This is deliberately kept <b>out</b> of the composite and shown
+     as a warning instead. A 6-point gap against a market this efficient almost always means an
+     injury or personnel change your inputs haven't caught — treat it as a prompt to check, not a play.</p>
+
+  <h4>Data confidence</h4>
+  <p>What share of the projection rests on real team data versus league-average fallbacks.
+     In Week 1 this sits low by design: the priors are ${PRIOR_SEASON} rates, and current-season
+     data only begins to outweigh them around Week 4 for volume stats and Week 8 for efficiency.</p>
+
+  <h4>Shrinkage</h4>
+  <p>Current-season weight is <code>n/(n+k)</code> games. Plays and pass rate use k=3,
+     aDOT and sack rate k=5, yards per attempt and per carry k=8, points k=6.
+     Efficiency stats get shrunk hardest because they stabilize slowest.</p>
+
+  <div style="margin-top:14px"><button class="btn" onclick="closeModal()">Close</button></div>`);
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape'){ closeDetail(); closeModal(); }
+  if (e.key === 'ArrowLeft' && !$('detail').classList.contains('open')) $('wPrev').click();
+  if (e.key === 'ArrowRight' && !$('detail').classList.contains('open')) $('wNext').click();
+});
+
+load();
+</script>
+</body>
+</html>
