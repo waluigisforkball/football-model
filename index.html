@@ -206,13 +206,32 @@ details.gx[open]>summary .cv{transform:rotate(90deg)}
 .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--bg4);
       border-top-color:var(--g);border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px}
 @keyframes s{to{transform:rotate(360deg)}}
+
+/* ---------- record ---------- */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px}
+.tile{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r2);padding:11px 12px}
+.tile .tl{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--t3)}
+.tile .tv{font-family:var(--fm);font-size:21px;font-weight:600;margin-top:5px;line-height:1.1}
+.tile .ts{font-family:var(--fm);font-size:10.5px;color:var(--t2);margin-top:4px}
+.rtbl{width:100%;border-collapse:collapse;font-family:var(--fm);font-size:11.5px}
+.rtbl th{font-family:var(--fb);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;
+         color:var(--t3);text-align:right;padding:6px 8px;border-bottom:1px solid var(--b1)}
+.rtbl td{text-align:right;padding:7px 8px;border-bottom:1px solid var(--bg3);white-space:nowrap}
+.rtbl th:first-child,.rtbl td:first-child{text-align:left}
+.rtbl td.nm{font-family:var(--fb);font-weight:600;white-space:normal}
+.rwrap{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r2);overflow-x:auto}
+.res{font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:5px;letter-spacing:.4px;text-transform:uppercase}
+.res.win{background:var(--grd);color:var(--gr)}.res.loss{background:var(--rd);color:var(--r)}
+.res.push,.res.void{background:var(--bg4);color:var(--t2)}.res.pending{background:var(--bg3);color:var(--t3)}
+.betbtn.on{background:var(--gd);border-color:var(--g);color:var(--g)}
+.star{color:var(--g)}
 </style>
 </head>
 <body>
 
 <div class="hdr">
   <div class="hdr-top">
-    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.18</span>
+    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.19</span>
     <div class="wk"><button id="wPrev">‹</button><div class="lbl" id="wLbl">Week —</div><button id="wNext">›</button></div>
     <div class="spacer"></div>
     <button class="btn pull" id="bPull">↓ Pull odds</button>
@@ -224,6 +243,7 @@ details.gx[open]>summary .cv{transform:rotate(90deg)}
   <div class="tabs">
     <button class="tab on" data-tab="edges">Edges</button>
     <button class="tab" data-tab="slate">Slate</button>
+    <button class="tab" data-tab="record">Record</button>
   </div>
 </div>
 
@@ -354,7 +374,8 @@ const S = { tab:'edges', week:null, weeks:[], games:[], rates:{}, prior:{},
             props:[], propsMeta:null, anchor:75, minev:2, olineImp:6, lastn:5, trust:50,
             mktFilter:new Set(Object.keys(MKT)), sort:'time',
             loading:false, pulling:false, err:null, dataErr:[], game:null, gd:null, gdErr:null,
-            roster:{ loaded:false, week:null, byName:new Map(), teams:new Set() } };
+            roster:{ loaded:false, week:null, byName:new Map(), teams:new Set() },
+            logged:new Map(), logErr:null, rec:null, recErr:null, recFilter:'all' };
 
 const $ = id => document.getElementById(id);
 const R = (n,d=1) => (n===null||n===undefined||!isFinite(n)) ? null : +(+n).toFixed(d);
@@ -1157,6 +1178,7 @@ async function loadAll(){
     .catch(()=>{});
 
   loadWeather();
+  loadLogged();
 }
 
 function setRoster(d){
@@ -1187,6 +1209,74 @@ async function pullOdds(force){
     store.set('nflslate.props.'+S.week, { props:S.props, meta:d });
   } catch(e){ S.err = e.message; }
   S.pulling = false; render();
+  if (!S.err) logBoard();
+}
+
+/* ===================================================================== */
+/* RESULT LOGGING                                                         */
+/* Every board edge is sent to the worker after an odds pull. The worker  */
+/* keeps the first sighting (price, model %, fair %) and keeps updating   */
+/* the closing price on later pulls until kickoff. The nightly build      */
+/* grades them into data/results-<season>.json.                           */
+/* ===================================================================== */
+const LOG_KEY = 'forkball-log-1';
+async function jpost(path, body){
+  const r = await fetch(WORKER.replace(/\/+$/,'') + path, { method:'POST',
+    headers:{ 'Content-Type':'application/json', 'X-Log-Key':LOG_KEY }, body:JSON.stringify(body) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || (path + ' → ' + r.status));
+  return d;
+}
+const playId = (player, market, dir, line) => `${normName(player)}|${market}|${dir}|${line}`;
+let _pidMap = null;
+function pidOf(name){
+  if (!_pidMap || _pidMap.src !== S.pRates) {
+    _pidMap = new Map(); _pidMap.src = S.pRates;
+    for (const src of [S.pPrior, S.pRates]) for (const [id, p] of Object.entries(src.players || {})) _pidMap.set(normName(p.name), id);
+  }
+  return _pidMap.get(normName(name)) || null;
+}
+function playOf(e){
+  const p = e.prop, b = e.best;
+  return { player:p.player, pid:pidOf(p.player), market:p.market, dir:b.dir, line:p.line,
+    price:b.price, book:b.book || null, game:p.game, game_id:e.game.game_id, commence:p.commence || null,
+    p:R(b.p,4), fair:R(b.fair,4), ev:R(b.ev,2), pts:R(b.pts,2), mean:R(e.pj.mean,1), w:R(e.w,3), opp:Math.round(e.opp),
+    badges:e.badges.map(x => x[1]),
+    settings:{ minev:S.minev, trust:S.trust, anchor:S.anchor, oline:S.olineImp, lastn:S.lastn } };
+}
+/** The board as it stands, across ALL markets (the chip filter is a view, not a verdict). */
+function boardEdges(){
+  if (!S.props.length || S.dataErr.length) return [];
+  if (!Object.keys(S.pPrior.players || {}).length || !Object.keys(S.pRates.players || {}).length) return [];
+  const keep = S.mktFilter; S.mktFilter = new Set(Object.keys(MKT));
+  try { return buildEdges().priced || []; } finally { S.mktFilter = keep; }
+}
+async function logBoard(){
+  const plays = boardEdges().map(playOf);
+  S.logErr = null;
+  try {
+    if (plays.length) await jpost('/plays', { season:SEASON, week:S.week, plays });
+    await loadLogged();
+  } catch(e){ S.logErr = e.message; render(); }
+}
+async function loadLogged(){
+  try {
+    const d = await jget(`/plays?season=${SEASON}&week=${S.week}`);
+    S.logged = new Map((d.plays || []).map(p => [p.id, p]));
+  } catch(e){ S.logged = new Map(); }
+  render();
+}
+async function toggleBet(i){
+  const e = _edges[i]; if (!e) return;
+  const pl = playOf(e), id = playId(pl.player, pl.market, pl.dir, pl.line);
+  const cur = S.logged.get(id), bet = !(cur && cur.bet);
+  const btn = $('betBtn'); if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    await jpost('/plays/bet', { season:SEASON, week:S.week, play:pl, bet });
+    S.logged.set(id, Object.assign({}, cur || pl, { id, bet, source: cur ? cur.source : 'manual' }));
+    S.rec = null;                                  // record tab refetches
+  } catch(e){ alert('Could not save: ' + e.message); }
+  openEdge(i); render();
 }
 
 async function loadWeather(){
@@ -1381,6 +1471,8 @@ function render(){
             + (S.propsMeta.credits_remaining!==null&&S.propsMeta.credits_remaining!==undefined
                ? ` · ${S.propsMeta.credits_remaining} credits left`:'')+`</span>`;
   }
+  if (S.logged.size) oddsTxt += `<span>${S.logged.size} logged${[...S.logged.values()].some(p => p.bet) ? ' · '+[...S.logged.values()].filter(p => p.bet).length+' bet' : ''}</span>`;
+  if (S.logErr) oddsTxt += `<span style="color:var(--r)">✕ logging failed (${S.logErr}) — redeploy the worker?</span>`;
   $('status').innerHTML = `<span>${S.games.length} games</span>
     <span>confidence <span class="conf-bar"><span class="conf-fill" style="width:${Math.round(conf*100)}%"></span></span> ${Math.round(conf*100)}%</span>
     <span>priors ${PRIOR_SEASON} · ${Object.keys(S.pPrior.players||{}).length} players · current ${curN}g</span>
@@ -1389,6 +1481,8 @@ function render(){
     + (S.dataErr.length ? `<span style="color:var(--r);font-weight:600">✕ ${S.dataErr.join(' · ')} — board unreliable, press ↺</span>` : '');
 
   if (S.game){ renderGame(); return; }
+
+  if (S.tab === 'record'){ renderRecord(); return; }
 
   if (S.tab === 'slate'){
     loadGameData();                                    // snap shares decide which injuries are notable
@@ -1453,8 +1547,121 @@ function render(){
   });
 }
 
+/* ---------- record tab ---------- */
+/* Plays come live from the worker (so bets and new plays show at once); grades come
+   from the nightly results file. CLV is recomputed here so pending plays show it too. */
+async function loadRecord(){
+  S.recErr = null;
+  const [live, graded] = await Promise.all([
+    jget(`/plays?season=${SEASON}`).catch(e => { S.recErr = 'worker: ' + e.message; return { plays:[] }; }),
+    fetch(`./data/results-${SEASON}.json?v=${encodeURIComponent((META && META.generated) || Date.now())}`)
+      .then(r => r.ok ? r.json() : { plays:[] }).catch(() => ({ plays:[] })),
+  ]);
+  const g = new Map((graded.plays || []).map(p => [p.week + '|' + p.id, p]));
+  const all = new Map();
+  for (const p of graded.plays || []) all.set(p.week + '|' + p.id, p);
+  for (const p of live.plays || []) {
+    const k = p.week + '|' + p.id, gp = g.get(k);
+    all.set(k, gp ? Object.assign({}, p, { result:gp.result, stat:gp.stat, units:gp.units }) : p);
+  }
+  S.rec = [...all.values()].map(p => {
+    const c = p.close || {};
+    const clv = (c.line === p.line && c.fair !== null && c.fair !== undefined && p.fair !== null && p.fair !== undefined)
+      ? (c.fair - p.fair) * 100 : null;
+    const mv = c.line !== undefined && c.line !== null ? c.line - p.line : 0;
+    const beat = clv !== null ? (clv > 0.05 ? true : clv < -0.05 ? false : null)
+               : mv ? (p.dir === 'over' ? mv > 0 : mv < 0) : null;
+    return Object.assign({ result:'pending' }, p, { clv, move:mv, beat });
+  }).sort((a,b) => (b.week - a.week) || String(a.commence).localeCompare(String(b.commence)) || a.player.localeCompare(b.player));
+  render();
+}
+
+function recSummary(list){
+  const n = r => list.filter(p => p.result === r).length;
+  const W = n('win'), L = n('loss'), P = n('push'), V = n('void'), pend = n('pending');
+  const units = list.reduce((s,p) => s + (p.units || 0), 0), risked = W + L + P;
+  const cl = list.filter(p => p.clv !== null), bc = list.filter(p => p.beat !== null);
+  return { W, L, P, V, pend, units, risked, roi: risked ? units / risked * 100 : null,
+           clv: cl.length ? cl.reduce((s,p) => s + p.clv, 0) / cl.length : null, nClv: cl.length,
+           beat: bc.length ? bc.filter(p => p.beat).length / bc.length * 100 : null, nBeat: bc.length, n:list.length };
+}
+const sgn = (v, d=2) => v === null || v === undefined ? '—' : (v > 0 ? '+' : '') + v.toFixed(d);
+const upColor = v => v === null ? 'var(--t3)' : v > 0 ? 'var(--gr)' : v < 0 ? 'var(--r)' : 'var(--t2)';
+
+function renderRecord(){
+  if (!S.rec) { $('main').innerHTML = '<div class="empty"><span class="spin"></span> loading record…</div>'; loadRecord(); return; }
+  const f = S.recFilter;
+  const list = S.rec.filter(p => f === 'bets' ? p.bet : p.source !== 'manual');
+  const sm = recSummary(list);
+  const chips = `<div class="fchips" style="margin-bottom:12px">
+      <span class="fchip ${f==='all'?'on':''}" data-rf="all">Model — every board play</span>
+      <span class="fchip ${f==='bets'?'on':''}" data-rf="bets">My bets ★</span></div>`;
+  const err = S.recErr ? `<div class="warn" style="margin-bottom:10px">Couldn't read live plays (${S.recErr}). Showing the last nightly results only.</div>` : '';
+  if (!list.length) {
+    $('main').innerHTML = chips + err + `<div class="empty"><b>${f==='bets' ? 'No bets marked yet.' : 'Nothing logged yet.'}</b><br><br>
+      ${f==='bets' ? 'Open an edge and tap <b>☆ I bet this</b> to add it here.'
+        : 'Every edge on the board is logged automatically when you press <b>↓ Pull odds</b>.<br>Results are graded each morning from nflverse stats.'}</div>`;
+    wireRecord(); return;
+  }
+  const tile = (l, v, sub, col) => `<div class="tile"><div class="tl">${l}</div><div class="tv" style="color:${col||'var(--t)'}">${v}</div><div class="ts">${sub}</div></div>`;
+  const tiles = `<div class="tiles">
+    ${tile('Record', `${sm.W}–${sm.L}${sm.P?'–'+sm.P:''}`, `${sm.W+sm.L ? Math.round(sm.W/(sm.W+sm.L)*100)+'% wins' : 'no results yet'}${sm.V?' · '+sm.V+' void':''}`)}
+    ${tile('Units (1u flat)', sm.risked ? sgn(sm.units)+'u' : '—', sm.roi !== null ? `ROI ${sgn(sm.roi,1)}%` : '—', upColor(sm.risked ? sm.units : null))}
+    ${tile('Avg CLV', sm.clv !== null ? sgn(sm.clv,1)+' pts' : '—', `${sm.nClv} with a same-line close`, upColor(sm.clv))}
+    ${tile('Beat the close', sm.beat !== null ? Math.round(sm.beat)+'%' : '—', `of ${sm.nBeat} with a close to compare`, sm.beat === null ? null : sm.beat >= 50 ? 'var(--gr)' : 'var(--r)')}
+    ${tile('Pending', sm.pend, `${sm.n} logged in all`)}
+  </div>
+  <div class="note" style="margin:10px 0 4px">Wins and losses take hundreds of plays to mean much.
+    <b>CLV</b> — how the price moved between when the play was logged and your last odds pull before kickoff —
+    is the faster signal: consistently beating the close says the edges are real even through a losing week.
+    The close is only as fresh as your last pull.</div>`;
+
+  const mk = {};
+  for (const p of list) (mk[p.market] = mk[p.market] || []).push(p);
+  const mrows = Object.keys(MKT).filter(k => mk[k]).map(k => { const m = recSummary(mk[k]);
+    return `<tr><td class="nm">${MKT[k].label}</td><td>${m.n}</td><td>${m.W}–${m.L}${m.P?'–'+m.P:''}</td>
+      <td style="color:${upColor(m.risked?m.units:null)}">${sgn(m.units)}</td><td>${m.roi!==null?sgn(m.roi,1)+'%':'—'}</td>
+      <td style="color:${upColor(m.clv)}">${m.clv!==null?sgn(m.clv,1):'—'}</td><td>${m.beat!==null?Math.round(m.beat)+'%':'—'}</td></tr>`; }).join('');
+
+  const closeTxt = p => { const c = p.close || {};
+    if (c.line === undefined || c.line === null) return '—';
+    if (c.line !== p.line) return `${c.line} <span style="color:${upColor(p.beat===null?null:p.beat?1:-1)}">(${sgn(p.move,1)})</span>`;
+    return am(c.price); };
+  const prows = list.map(p => `<tr>
+      <td class="nm">${p.bet?'<span class="star">★</span> ':''}${p.player}<div style="font-family:var(--fm);font-weight:400;font-size:10px;color:var(--t3)">wk ${p.week} · ${p.game||''}</div></td>
+      <td><span class="e-dir ${p.dir}">${p.dir==='over'?'O':'U'} ${p.line}</span> ${MKT[p.market]?MKT[p.market].label:p.market}</td>
+      <td>${am(p.price)}</td>
+      <td>${p.p!=null?Math.round(p.p*100):'—'}% / ${p.fair!=null?Math.round(p.fair*100):'—'}%</td>
+      <td>${closeTxt(p)}</td>
+      <td style="color:${upColor(p.clv)}">${p.clv!==null?sgn(p.clv,1):'—'}</td>
+      <td>${p.stat!==null&&p.stat!==undefined?p.stat:'—'}</td>
+      <td><span class="res ${p.result}">${p.result}</span></td>
+      <td style="color:${upColor(p.units===null||p.units===undefined?null:p.units)}">${p.units!==null&&p.units!==undefined?sgn(p.units):''}</td></tr>`).join('');
+
+  $('main').innerHTML = chips + err + tiles
+    + `<div class="sechead">By market</div><div class="rwrap"><table class="rtbl">
+        <tr><th>Market</th><th>Plays</th><th>W–L</th><th>Units</th><th>ROI</th><th>CLV</th><th>Beat</th></tr>${mrows}</table></div>`
+    + `<div class="sechead">Every play <span style="float:right;text-transform:none;letter-spacing:0">model % / fair % when logged</span></div>
+       <div class="rwrap"><table class="rtbl">
+        <tr><th>Player</th><th>Play</th><th>Price</th><th>Model/Fair</th><th>Close</th><th>CLV</th><th>Stat</th><th>Result</th><th>Units</th></tr>
+        ${prows}</table></div>`;
+  wireRecord();
+}
+function wireRecord(){
+  document.querySelectorAll('[data-rf]').forEach(el => el.onclick = () => { S.recFilter = el.dataset.rf; render(); });
+}
+
 /* ---------- detail panels ---------- */
 function openEdge(i){ const e = _edges[i]; if (e) openEdgeObj(e); }
+function betBtnHtml(e){
+  const i = _edges.indexOf(e);
+  if (i < 0) return '';
+  const lp = S.logged.get(playId(e.prop.player, e.prop.market, e.best.dir, e.prop.line));
+  const started = e.prop.commence && Date.parse(e.prop.commence) <= Date.now();
+  if (started && !(lp && lp.bet)) return '';
+  return `<button class="btn betbtn ${lp && lp.bet ? 'on' : ''}" id="betBtn" ${started ? 'disabled' : ''}
+    onclick="toggleBet(${i})" title="Mark this as a bet you actually placed">${lp && lp.bet ? '★ Bet' : '☆ I bet this'}</button>`;
+}
 function openEdgeObj(e){
   const p = e.prop, b = e.best, pj = e.pj, side = pj.side;
   const parts = Object.entries(pj.parts).map(([k,v]) =>
@@ -1465,6 +1672,7 @@ function openEdgeObj(e){
   $('dpanel').innerHTML = `
     <div class="dhead"><h2>${p.player}</h2><div class="spacer"></div>
       <div style="font-family:var(--fm);font-size:17px;color:${evColor(b.ev)}">${b.ev>0?'+':''}${R(b.ev,1)}%</div>
+      ${betBtnHtml(e)}
       <button class="btn" onclick="closeDetail()">✕</button></div>
 
     <div class="sec"><h3>The claim</h3>
@@ -1836,7 +2044,7 @@ function syncRoute(){
   render();
 }
 window.addEventListener('hashchange', syncRoute);
-$('bRefresh').onclick = load;
+$('bRefresh').onclick = () => { S.rec = null; load(); };
 $('minev').oninput = e => { S.minev = +e.target.value; render(); };
 $('anchor').oninput = e => { S.anchor = +e.target.value; render(); };
 $('anchor2').oninput = e => { S.anchor = +e.target.value; render(); };
@@ -1992,6 +2200,15 @@ $('bGuide').onclick = () => showModal(`<h2>How this works</h2>
      team's opportunities in his games (k≈100 team targets), efficiency on his own
      (YPC k=110 carries, YPT k=50 targets, YPA k=250 attempts). Efficiency is shrunk hardest because
      it stabilizes slowest.</p>
+
+  <h4>Record</h4>
+  <p>Each <b>↓ Pull odds</b> logs every edge on the board, across all markets, at your current slider settings.
+     A play keeps the price and model numbers from the first time it appeared. Later pulls before kickoff update
+     its <b>close</b>. Each morning the nightly build grades finished games from nflverse: win, loss, push
+     (landed on the line) or void (didn't play). Units are 1u flat at the logged price.</p>
+  <p><b>CLV</b> is the fair probability of your side at the close minus when it was logged, at the same line.
+     Positive means the market moved your way. When books moved off the line entirely, "beat the close"
+     goes by which way the line moved. Tap <b>☆ I bet this</b> in an edge's panel to track your own bets separately.</p>
 
   <h4>Credits</h4>
   <p>Only the Pull odds button spends them, about 4 per game. Results cache on the worker for an
