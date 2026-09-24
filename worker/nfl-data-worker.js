@@ -1,5 +1,5 @@
 /**
- * NFL Slate — data worker  (v2.4)
+ * NFL Slate — data worker  (v2.5)
  *
  * Bindings required (Cloudflare dashboard → Worker → Settings):
  *   KV namespace : ODDS_CACHE
@@ -17,6 +17,10 @@
  *   GET /props?week=3[&force=1][&markets=...]     <-- SPENDS CREDITS. Manual only.
  *   GET /props/status?week=3                       <-- free; what's in cache
  *   GET /raw/<release>/<file>
+ *   GET  /plays?season=2026[&week=3]              <-- logged board plays (result tracking)
+ *   POST /plays        {season, week, plays:[…]}  <-- page logs its board after each odds pull
+ *   POST /plays/bet    {season, week, play, bet}  <-- "I bet this" toggle
+ *   (POSTs need the X-Log-Key header — keeps stray traffic out; not a real secret)
  */
 
 const BASE = 'https://github.com/nflverse/nflverse-data/releases/download';
@@ -28,8 +32,8 @@ const DEFAULT_MARKETS = 'player_pass_yds,player_rush_yds,player_reception_yds,pl
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Log-Key',
 };
 
 /* Odds API uses full team names; nflverse uses abbreviations. */
@@ -51,8 +55,8 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, '') || '/';
 
-    // /props manages its own KV cache — never serve it from the edge cache
-    const useEdge = !path.startsWith('/props');
+    // /props and /plays manage their own KV state — never serve them from the edge cache
+    const useEdge = request.method === 'GET' && !path.startsWith('/props') && !path.startsWith('/plays');
     const cache = caches.default;
     const cacheKey = new Request(url.toString(), request);
     if (useEdge) {
@@ -72,6 +76,9 @@ export default {
       else if (path === '/roster')        res = await roster(url);
       else if (path === '/props/status')  res = await propsStatus(url, env);
       else if (path === '/props')         res = await props(url, env);
+      else if (path === '/plays' && request.method === 'POST')     res = await logPlays(request, env);
+      else if (path === '/plays/bet' && request.method === 'POST') res = await betPlay(request, env);
+      else if (path === '/plays')         res = await getPlays(url, env);
       else if (path.startsWith('/raw/'))  res = await raw(path.slice(5));
       else res = json({ error:'unknown endpoint', path }, 0, 404);
     } catch (err) {
@@ -549,7 +556,7 @@ async function props(url, env) {
   const ev = await oddsFetch(env, '/events', {});      // events endpoint costs 0 credits
   const events = (ev.data || []).slice(0, 20);
 
-  const rows = [];
+  const rows = [], rungs = {};
   let remaining = ev.remaining, spent = 0;
   for (const e of events) {
     let d;
@@ -590,6 +597,7 @@ async function props(url, env) {
     for (const [k, entries] of grouped) {
       const bar = k.lastIndexOf('|');
       const player = k.slice(0, bar), market = k.slice(bar+1);
+      for (const [line, f] of rungFairs(entries)) rungs[`${normKey(player)}|${market}|${line}`] = f;
       const c = consensus(entries);
       if (c.line === undefined || c.line === null) continue;
       rows.push({
@@ -607,7 +615,158 @@ async function props(url, env) {
     markets: markets.split(','),
   };
   await env.ODDS_CACHE.put(kvKey(week), JSON.stringify(payload), { expirationTtl: 60*60*24 });
+  await env.ODDS_CACHE.put(rungKey(week), JSON.stringify({ at:payload.cached_at, rungs }), { expirationTtl: 60*60*24*3 });
+  try { await updateCloses(env, week, rows, rungs); } catch (e) { /* never fail an odds pull over logging */ }
   return json(Object.assign({}, payload, { from_cache:false, age_s:0 }));
+}
+
+/* ----------------------------------------------------------------- plays
+   Result tracking. Every board edge is logged once, when it first appears after
+   an odds pull, with the model's numbers and the market's fair price at that
+   moment. Each later odds pull BEFORE kickoff overwrites its "close" — so the
+   closing line is the last price seen before the game started. The nightly build
+   reads these and grades them against nflverse stats. */
+
+const LOG_KEY = 'forkball-log-1';
+const seasonNow = () => { const d = new Date(); return d.getUTCMonth() + 1 >= 6 ? d.getUTCFullYear() : d.getUTCFullYear() - 1; };
+const playsKey = (season, week) => `plays:v1:${season}:${week}`;
+const rungKey = week => `rungs:v1:${week}`;
+/* Same idea as the page's normName: "St. Brown" and "St.Brown" are one player. */
+const normKey = s => (s||'').toLowerCase().replace(/[.'`\-]/g,' ').replace(/\s+(jr|sr|ii|iii|iv|v)\s*$/,'').replace(/\s+/g,'');
+const amProb = a => a === null || a === undefined ? null : a > 0 ? 100/(a+100) : -a/(-a+100);
+
+/** Fair P(over) at every rung any book posted: each book de-vigged on its own,
+    then the median across core books (all books if no core book has that rung).
+    Used for BOTH the logged price and the close, so CLV compares like with like. */
+function rungFairs(entries){
+  const by = new Map();
+  for (const e of entries) {
+    if (e.over === null || e.under === null) continue;
+    const po = amProb(e.over), pu = amProb(e.under);
+    if (!po || !pu) continue;
+    const r = by.get(e.line) || { core:[], all:[] };
+    const f = po/(po+pu);
+    r.all.push(f); if (CORE_BOOKS.indexOf(e.book) >= 0) r.core.push(f);
+    by.set(e.line, r);
+  }
+  const out = [];
+  for (const [line, r] of by) {
+    const xs = (r.core.length ? r.core : r.all).sort((a,b) => a-b);
+    const m = xs.length % 2 ? xs[(xs.length-1)/2] : (xs[xs.length/2-1] + xs[xs.length/2]) / 2;
+    out.push([line, [+m.toFixed(4), xs.length]]);
+  }
+  return out;
+}
+
+async function readPlays(env, season, week){
+  const raw = await env.ODDS_CACHE.get(playsKey(season, week));
+  return raw ? JSON.parse(raw) : { season, week, plays:{} };
+}
+async function writePlays(env, d){
+  d.updated = Date.now();
+  await env.ODDS_CACHE.put(playsKey(d.season, d.week), JSON.stringify(d));
+}
+
+/** Fair probability of THIS play's side at THIS play's line, from a rung index. */
+function sideFair(rungs, p){
+  const r = rungs && rungs[`${normKey(p.player)}|${p.market}|${p.line}`];
+  if (!r) return null;
+  return p.dir === 'over' ? r[0] : +(1 - r[0]).toFixed(4);
+}
+
+/* Called on every fresh odds pull. Games that have kicked off keep the close they had. */
+async function updateCloses(env, week, rows, rungs){
+  const d = await readPlays(env, seasonNow(), week);
+  const now = Date.now();
+  const cons = new Map(rows.map(r => [`${normKey(r.player)}|${r.market}`, r]));
+  let touched = 0;
+  for (const p of Object.values(d.plays)) {
+    if (!p.commence || Date.parse(p.commence) <= now) continue;
+    const c = cons.get(`${normKey(p.player)}|${p.market}`);
+    if (!c) continue;                       // pulled off the board (injury news): keep the last close
+    p.close = { at:now, line:c.line, fair:sideFair(rungs, p),
+                price: p.dir === 'over' ? c.over : c.under };
+    touched++;
+  }
+  if (touched) await writePlays(env, d);
+}
+
+function checkKey(request){ return request.headers.get('X-Log-Key') === LOG_KEY; }
+
+/* Fields the page may send. Anything else is dropped. */
+const PLAY_FIELDS = ['player','pid','market','dir','line','price','book','game','game_id','commence',
+                     'p','fair','ev','pts','mean','w','opp','badges','settings'];
+function cleanPlay(x){
+  const o = {};
+  for (const k of PLAY_FIELDS) if (x[k] !== undefined) o[k] = x[k];
+  if (!o.player || !o.market || !o.dir || typeof o.line !== 'number') return null;
+  if (o.dir !== 'over' && o.dir !== 'under') return null;
+  return o;
+}
+const playId = p => `${normKey(p.player)}|${p.market}|${p.dir}|${p.line}`;
+
+async function logPlays(request, env){
+  if (!checkKey(request)) return json({ error:'bad log key' }, 0, 403);
+  if (!env.ODDS_CACHE) return json({ error:'ODDS_CACHE KV binding missing' }, 0, 500);
+  const body = await request.json();
+  const season = +body.season, week = +body.week;
+  if (!season || !week) return json({ error:'season and week required' }, 0, 400);
+  const d = await readPlays(env, season, week);
+  const rr = await env.ODDS_CACHE.get(rungKey(week));
+  const rungs = rr ? JSON.parse(rr).rungs : null;
+  const now = Date.now();
+  let added = 0, late = 0;
+  for (const x of (body.plays || []).slice(0, 300)) {
+    const p = cleanPlay(x); if (!p) continue;
+    const id = playId(p);
+    if (d.plays[id]) continue;                                  // first sighting wins
+    if (p.commence && Date.parse(p.commence) <= now) { late++; continue; }   // no logging after kickoff
+    p.id = id; p.logged_at = now; p.source = 'board'; p.bet = false;
+    const f = sideFair(rungs, p);
+    if (f !== null) p.fair = f;                                 // same method as the close
+    p.close = { at:now, line:p.line, fair:p.fair ?? null, price:p.price ?? null };
+    d.plays[id] = p; added++;
+  }
+  if (added) await writePlays(env, d);
+  return json({ ok:true, added, late, total:Object.keys(d.plays).length });
+}
+
+async function betPlay(request, env){
+  if (!checkKey(request)) return json({ error:'bad log key' }, 0, 403);
+  if (!env.ODDS_CACHE) return json({ error:'ODDS_CACHE KV binding missing' }, 0, 500);
+  const body = await request.json();
+  const season = +body.season, week = +body.week;
+  const p = body.play && cleanPlay(body.play);
+  if (!season || !week || !p) return json({ error:'season, week and play required' }, 0, 400);
+  const d = await readPlays(env, season, week);
+  const id = playId(p);
+  if (!d.plays[id]) {
+    // Bet on something the board didn't log (different slider settings). Keep it,
+    // but out of the model's record.
+    if (p.commence && Date.parse(p.commence) <= Date.now()) return json({ error:'game has started' }, 0, 409);
+    p.id = id; p.logged_at = Date.now(); p.source = 'manual';
+    p.close = { at:p.logged_at, line:p.line, fair:p.fair ?? null, price:p.price ?? null };
+    d.plays[id] = p;
+  }
+  d.plays[id].bet = !!body.bet;
+  d.plays[id].bet_at = Date.now();
+  await writePlays(env, d);
+  return json({ ok:true, id, bet:d.plays[id].bet });
+}
+
+async function getPlays(url, env){
+  if (!env.ODDS_CACHE) return json({ error:'ODDS_CACHE KV binding missing' }, 0, 500);
+  const season = +(url.searchParams.get('season') || seasonNow());
+  const week = url.searchParams.get('week');
+  const weeks = [];
+  if (week) weeks.push(await readPlays(env, season, +week));
+  else {
+    const ls = await env.ODDS_CACHE.list({ prefix:`plays:v1:${season}:` });
+    for (const k of ls.keys) { const raw = await env.ODDS_CACHE.get(k.name); if (raw) weeks.push(JSON.parse(raw)); }
+  }
+  const plays = [];
+  for (const w of weeks) for (const p of Object.values(w.plays || {})) plays.push(Object.assign({ week:w.week }, p));
+  return json({ season, plays });
 }
 
 /* -------------------------------------------------------------------- raw */
