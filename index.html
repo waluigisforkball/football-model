@@ -178,7 +178,7 @@ textarea.inp{height:300px;resize:vertical;line-height:1.55}
 
 <div class="hdr">
   <div class="hdr-top">
-    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.7</span>
+    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.9</span>
     <div class="wk"><button id="wPrev">‹</button><div class="lbl" id="wLbl">Week —</div><button id="wNext">›</button></div>
     <div class="spacer"></div>
     <button class="btn pull" id="bPull">↓ Pull odds</button>
@@ -222,7 +222,9 @@ textarea.inp{height:300px;resize:vertical;line-height:1.55}
 <script>
 /* ===================================================================== */
 const DEFAULT_WORKER = 'https://nfl-data.billywitchdoctordfs.workers.dev';
-const SEASON = 2026, PRIOR_SEASON = 2025;
+/* Defaults only — data/meta.json (written by the nightly build) sets the real seasons,
+   so next year rolls over without editing this file. */
+let SEASON = 2026, PRIOR_SEASON = 2025, META = null;
 
 const store = {
   get(k,d){ try{ const v=localStorage.getItem(k); return v===null?d:JSON.parse(v); }catch(e){ return d; } },
@@ -974,6 +976,41 @@ async function jget(path){
   return await r.json();
 }
 
+/* Heavy tables (player/team rates, roster) are built nightly by a GitHub Action
+   into data/ beside this page — parsing a season of stats exceeds a free-tier
+   worker's limits. The worker endpoints are only a fallback. */
+async function loadMeta(){
+  try {
+    const r = await fetch('./data/meta.json', { cache:'no-store' });
+    if (!r.ok) return;
+    META = await r.json();
+    if (META.season) { SEASON = META.season; PRIOR_SEASON = META.prior_season || SEASON - 1; }
+  } catch(e) {}
+}
+async function dataFile(name, workerPath){
+  if (META && (META.files || []).indexOf(name) >= 0) {
+    try {
+      const r = await fetch(`./data/${name}?v=${encodeURIComponent(META.generated || '')}`);
+      if (r.ok) return await r.json();
+    } catch(e) {}
+  }
+  return jget(workerPath);
+}
+/** The nightly file carries every window (players[id].lasts[n]); expose the chosen one as .last. */
+function pickWindow(d){
+  const n = S.lastn >= 99 ? null : S.lastn;
+  for (const p of Object.values(d.players || {}))
+    if (p.lasts) p.last = n !== null ? (p.lasts[n] || null) : null;
+  return d;
+}
+/** Nightly roster file holds every week; take the latest published one at or before this week. */
+function pickRosterWeek(d){
+  if (!d.weeks) return d;
+  const wk = Object.keys(d.weeks).map(Number).filter(w => w <= S.week).sort((a,b) => b-a)[0];
+  return { week_used: wk || null,
+           players: wk ? d.weeks[wk].map(r => ({ name:r[0], team:r[1], pos:r[2], status:r[3] })) : [] };
+}
+
 async function loadWeeks(){
   const d = await jget(`/weeks?season=${SEASON}`);
   S.weeks = d.weeks || [];
@@ -992,13 +1029,13 @@ async function loadAll(){
   const always = () => true;
   const [slate, rates, prior, pRates, pPrior, inj, ros] = await Promise.all([
     jget(`/slate?season=${SEASON}&week=${S.week}`),
-    soft(`${SEASON} team rates`, jget(`/team-rates?season=${SEASON}`), {teams:{},league:{}}, nTeams),
-    soft(`${PRIOR_SEASON} team priors`, jget(`/team-rates?season=${PRIOR_SEASON}`), {teams:{},league:{}}, nTeams),
-    soft(`${SEASON} player rates`, jget(`/player-rates?season=${SEASON}&lastn=${S.lastn>=99?10:S.lastn}&v=22`), {players:{}}, nPlayers),
-    soft(`${PRIOR_SEASON} player priors`, jget(`/player-rates?season=${PRIOR_SEASON}&lastn=5&v=22`), {players:{}}, nPlayers),
+    soft(`${SEASON} team rates`, dataFile(`team-rates-${SEASON}.json`, `/team-rates?season=${SEASON}`), {teams:{},league:{}}, nTeams),
+    soft(`${PRIOR_SEASON} team priors`, dataFile(`team-rates-${PRIOR_SEASON}.json`, `/team-rates?season=${PRIOR_SEASON}`), {teams:{},league:{}}, nTeams),
+    soft(`${SEASON} player rates`, dataFile(`player-rates-${SEASON}.json`, `/player-rates?season=${SEASON}&lastn=${S.lastn>=99?10:S.lastn}&v=22`).then(pickWindow), {players:{}}, nPlayers),
+    soft(`${PRIOR_SEASON} player priors`, dataFile(`player-rates-${PRIOR_SEASON}.json`, `/player-rates?season=${PRIOR_SEASON}&lastn=5&v=22`), {players:{}}, nPlayers),
     // Injuries can legitimately be empty early in a week; a failed fetch still gets reported.
     soft('injury report', jget(`/injuries?season=${SEASON}&week=${S.week}`), {injuries:[]}, always),
-    soft('roster', jget(`/roster?season=${SEASON}&week=${S.week}`), {players:[]}, d => (d.players||[]).length),
+    soft('roster', dataFile(`roster-${SEASON}.json`, `/roster?season=${SEASON}&week=${S.week}`).then(pickRosterWeek), {players:[]}, d => (d.players||[]).length),
   ]);
   S.games = slate.games || []; S.rates = rates; S.prior = prior;
   S.pRates = pRates; S.pPrior = pPrior; _pIndex = null;
@@ -1068,7 +1105,7 @@ async function loadWeather(){
 
 async function load(){
   S.loading = true; S.err = null; render();
-  try { if (!S.weeks.length) await loadWeeks(); await loadAll(); }
+  try { if (!META) await loadMeta(); if (!S.weeks.length) await loadWeeks(); await loadAll(); }
   catch(e){ S.err = e.message; }
   S.loading = false; render();
 }
@@ -1143,6 +1180,20 @@ function card(g){
   </div>`;
 }
 
+/* The nightly build only commits when data changes, so "old" isn't the warning —
+   "a week has been final for 2 days and the stats still don't include it" is. */
+function dataAgeTxt(){
+  if (!META) return '<span class="stale">no nightly data — using worker</span>';
+  const built = META.generated ? Math.round((Date.now() - Date.parse(META.generated)) / 3600000) : null;
+  const age = built === null ? '?' : built < 1 ? 'just now' : built < 48 ? built + 'h ago' : Math.round(built/24) + 'd ago';
+  const cutoff = Date.now() - 2*86400000;
+  const final = S.weeks.filter(w => w.played === w.games && w.games && Date.parse(w.last) < cutoff)
+                       .reduce((m, w) => Math.max(m, w.week), 0);
+  const behind = META.stats_through_week !== null && final > (META.stats_through_week || 0);
+  return `<span class="${behind ? 'stale' : ''}">data thru wk ${META.stats_through_week ?? '—'} · built ${age}`
+       + (behind ? ` — week ${final} is final but not in the stats; check the Actions tab` : '') + `</span>`;
+}
+
 let _edges = null;
 function render(){
   $('wLbl').textContent = S.week ? 'Week '+S.week : 'Week —';
@@ -1191,7 +1242,8 @@ function render(){
   $('status').innerHTML = `<span>${S.games.length} games</span>
     <span>confidence <span class="conf-bar"><span class="conf-fill" style="width:${Math.round(conf*100)}%"></span></span> ${Math.round(conf*100)}%</span>
     <span>priors ${PRIOR_SEASON} · ${Object.keys(S.pPrior.players||{}).length} players · current ${curN}g</span>
-    <span>${S.injuries.length} on injury report · roster ${S.roster.week ? 'wk '+S.roster.week : '—'}</span>${oddsTxt}`
+    <span>${S.injuries.length} on injury report · roster ${S.roster.week ? 'wk '+S.roster.week : '—'}</span>
+    ${dataAgeTxt()}${oddsTxt}`
     + (S.dataErr.length ? `<span style="color:var(--r);font-weight:600">✕ ${S.dataErr.join(' · ')} — board unreliable, press ↺</span>` : '');
 
   if (S.tab === 'slate'){
@@ -1210,6 +1262,14 @@ function render(){
     $('main').innerHTML = `<div class="empty"><b>No odds loaded for Week ${S.week}.</b><br><br>
       Press <b>↓ Pull odds</b> to fetch player props.<br>
       That's the only action that spends API credits — roughly 4 per game.</div>`;
+    return;
+  }
+  const noPrior = !Object.keys(S.pPrior.players || {}).length, noCur = !Object.keys(S.pRates.players || {}).length;
+  if (noPrior || noCur){
+    _edges = [];
+    $('main').innerHTML = `<div class="empty"><b>Board withheld.</b><br><br>
+      ${noPrior ? PRIOR_SEASON+' player priors' : SEASON+' player rates'} didn't load, so every player would
+      fall back to a position default and the edges would be fiction.<br>Press ↺ to retry.</div>`;
     return;
   }
   const res = buildEdges();
@@ -1361,6 +1421,8 @@ function showModal(h){ $('mpanel').innerHTML = h; $('modal').classList.add('open
 function rundown(){
   const L = [`NFL SLATE — Week ${S.week} (${SEASON})`,
              `anchor ${S.anchor}% · min EV +${S.minev}% · ${S.lastn>=99?'season':'L'+S.lastn} window`, ''];
+  if (!Object.keys(S.pPrior.players || {}).length || !Object.keys(S.pRates.players || {}).length)
+    return L.concat(['Board withheld — player data failed to load.']).join('\n');
   const res = buildEdges();
   if (res.cal) {
     L.push('Calibration (lean vs fair, pts): ' + res.cal.rows.map(r =>
