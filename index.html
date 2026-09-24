@@ -151,7 +151,7 @@ select{background:var(--bg3);border:1px solid var(--b1);border-radius:var(--r1);
 table{width:100%;border-collapse:collapse;font-family:var(--fm);font-size:11.5px}
 th{text-align:right;font-weight:600;color:var(--t3);padding:5px 6px;border-bottom:1px solid var(--b1);font-size:10px}
 th:first-child,td:first-child{text-align:left}
-td{padding:5px 6px;border-bottom:1px solid rgba(58,58,60,.5);color:var(--t2)}
+td{padding:5px 6px;border-bottom:1px solid rgba(58,58,60,.5);color:var(--t2);text-align:right}
 td.hl{color:var(--g);font-weight:600}
 .note{font-size:11.5px;color:var(--t3);line-height:1.6;font-family:var(--fb)}
 .warn{background:var(--rd);border:1px solid var(--r);border-radius:var(--r1);padding:9px 11px;
@@ -178,7 +178,7 @@ textarea.inp{height:300px;resize:vertical;line-height:1.55}
 
 <div class="hdr">
   <div class="hdr-top">
-    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.5</span>
+    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.7</span>
     <div class="wk"><button id="wPrev">‹</button><div class="lbl" id="wLbl">Week —</div><button id="wNext">›</button></div>
     <div class="spacer"></div>
     <button class="btn pull" id="bPull">↓ Pull odds</button>
@@ -266,14 +266,31 @@ const PK = {
 const SCRIPT_K = 0.004;
 
 const FALLBACK = { plays_pg:61.3, pass_rate:.562, adot:7.8, sack_rate:.069, ypa:7.04, ypc:4.34, points_pg:23.0 };
-/* Position defaults — the floor priors under every player rate. */
+/* Position defaults for efficiency — the floor priors under every player rate.
+   Usage shares are NOT here: a flat "RB = 45% of carries" prior drags every backup
+   up to starter volume. Shares use ROLE below instead. */
 const POS_DEF = {
   QB:{ ypa:7.0, att_share:0.97 },
-  RB:{ carry_share:0.45, ypc:4.3, target_share:0.09, ypt:6.3, catch_rate:0.76 },
-  WR:{ target_share:0.16, ypt:8.2, catch_rate:0.63 },
-  TE:{ target_share:0.13, ypt:7.6, catch_rate:0.70 },
-  FB:{ carry_share:0.03, ypc:3.6, target_share:0.03, ypt:6.0, catch_rate:0.80 },
+  RB:{ ypc:4.3, ypt:6.3, catch_rate:0.76 },
+  WR:{ ypt:8.2, catch_rate:0.63 },
+  TE:{ ypt:7.6, catch_rate:0.70 },
+  FB:{ ypc:3.6, ypt:6.0, catch_rate:0.80 },
 };
+/* Role priors for usage share: share ≈ per × snap share, fitted on 2025
+   (RB carries 0.95, RB targets 0.17, WR 0.25, TE 0.20). With no snap data the
+   prior is the backup-level median, not the position average. */
+const ROLE = {
+  RB:{ carry_share:{ per:0.95, floor:0.12 }, target_share:{ per:0.17, floor:0.03 } },
+  WR:{ target_share:{ per:0.25, floor:0.04 } },
+  TE:{ target_share:{ per:0.20, floor:0.03 } },
+  FB:{ carry_share:{ per:0.10, floor:0.02 }, target_share:{ per:0.05, floor:0.02 } },
+};
+function roleDefault(pos, key, st){
+  const r = ROLE[pos] && ROLE[pos][key];
+  if (!r) return (POS_DEF[pos] || {})[key];
+  const sp = st ? st.snap_pct : null;
+  return (sp !== null && sp !== undefined && sp > 0) ? clamp(sp*r.per, r.floor, 0.85) : r.floor;
+}
 /* Market definitions: how to project, and the shape of the outcome. */
 const MKT = {
   // dist: pass yards are a sum over ~35 attempts, so they're near-symmetric.
@@ -299,7 +316,8 @@ const S = { tab:'edges', week:null, weeks:[], games:[], rates:{}, prior:{},
             pRates:{}, pPrior:{}, injuries:[], oline:{}, wx:{},
             props:[], propsMeta:null, anchor:75, minev:2, olineImp:6, lastn:5, trust:50,
             mktFilter:new Set(Object.keys(MKT)), sort:'comp',
-            loading:false, pulling:false, err:null };
+            loading:false, pulling:false, err:null, dataErr:[],
+            roster:{ loaded:false, week:null, byName:new Map(), teams:new Set() } };
 
 const $ = id => document.getElementById(id);
 const R = (n,d=1) => (n===null||n===undefined||!isFinite(n)) ? null : +(+n).toFixed(d);
@@ -365,8 +383,9 @@ function teamRate(team, side, key){
   return blendPrior(c ? c[key] : null, c ? spec.n(c) : 0, priorV, spec.k);
 }
 
-const normName = s => (s||'').toLowerCase().replace(/[.'`\-]/g,'')
-  .replace(/\s+(jr|sr|ii|iii|iv|v)$/,'').replace(/\s+/g,' ').trim();
+/* Spacing-insensitive: nflverse has "St.Brown", the odds feed "St. Brown". */
+const normName = s => (s||'').toLowerCase().replace(/[.'`\-]/g,' ')
+  .replace(/\s+(jr|sr|ii|iii|iv|v)\s*$/,'').replace(/\s+/g,'');
 
 let _pIndex = null;
 function playerIndex(){
@@ -401,8 +420,9 @@ function playerRate(name, pos, key){
   const cs = c && c[win] ? c[win] : null, ps = pr && pr.season ? pr.season : null;
   const cv = statVal(cs, key, c && c.team, S.rates);
   const pv = statVal(ps, key, pr && pr.team, S.prior);
-  const def = (POS_DEF[pos] || {})[key];
-  const priorV = (pv !== null && pv !== undefined) ? blendPrior(pv, spec.n(ps), def, spec.k) : def;
+  const priorV = (pv !== null && pv !== undefined)
+    ? blendPrior(pv, spec.n(ps), roleDefault(pos, key, ps), spec.k)
+    : roleDefault(pos, key, cs);
   return blendPrior(cv, cs ? spec.n(cs) : 0, priorV, spec.k);
 }
 
@@ -517,20 +537,129 @@ function oppCount(market, meta){
 /* Below these, the projection is standing on nothing worth pricing. */
 const MIN_VOL = { player_pass_yds:120, player_rush_yds:15, player_reception_yds:15, player_receptions:1.5 };
 
+/* ===================================================================== */
+/* USAGE BOOK — per team: every skill player's share, with Out/Doubtful and */
+/* inactive-roster players removed, their usage handed to teammates, and    */
+/* the room capped at what the team actually has.                           */
+/* ===================================================================== */
+const OUT_RE = /^(out|doubtful)/i;
+const INACTIVE = { RES:'on IR/reserve', INA:'inactive', CUT:'released', EXE:'exempt',
+                   RET:'retired', DEV:'on the practice squad', SUS:'suspended', PUP:'on PUP', NFI:'on NFI' };
+let _books = new Map();
+
+/** Where the roster says he plays now; falls back to his last team in the stats. */
+function currentTeam(name, meta){
+  const ro = S.roster.byName.get(normName(name));
+  return ro ? ro.team : (meta ? meta.team : null);
+}
+
+function availability(name, team){
+  const n = normName(name);
+  const inj = S.injuries.find(i => i.team === team && normName(i.name) === n);
+  if (inj && OUT_RE.test(inj.status || '')) return { active:false, why:inj.status.toLowerCase() };
+  if (S.roster.loaded && S.roster.teams.has(team)) {
+    const ro = S.roster.byName.get(n);
+    if (!ro || ro.team !== team) return { active:false, why:'no longer on the roster' };
+    if (INACTIVE[ro.status]) return { active:false, why:INACTIVE[ro.status] };
+  }
+  return { active:true, why:null, questionable: inj && /questionable/i.test(inj.status||'') ? inj : null };
+}
+
+function usageBook(team){
+  if (_books.has(team)) return _books.get(team);
+  const ix = playerIndex();
+  const members = new Map();
+  for (const p of Object.values(S.pRates.players || {}))
+    if (p.team === team && SKILL_POS.test(p.pos))
+      members.set(normName(p.name), { name:p.name, pos:p.pos, returning:false });
+  // Priced this week, no games yet this season, but on this team (last year or per roster):
+  // a starter back from injury. Without him in the room, his teammates keep his share.
+  for (const pr of S.props) {
+    const n = normName(pr.player);
+    if (members.has(n) || ix.cur.has(n)) continue;
+    const prev = ix.prior.get(n);
+    if (!prev || !SKILL_POS.test(prev.pos)) continue;
+    if (currentTeam(pr.player, prev) === team)
+      members.set(n, { name:prev.name, pos:prev.pos, returning:true });
+  }
+
+  const rows = [], byKey = new Map();
+  for (const [n, m] of members) {
+    const av = availability(m.name, team);
+    const qb = m.pos === 'QB';
+    const r = { key:n, name:m.name, pos:m.pos, returning:m.returning,
+                active:av.active, why:av.why, questionable:av.questionable,
+                raw:{
+                  carry_share:  playerRate(m.name, m.pos, 'carry_share') || 0,
+                  target_share: qb ? 0 : (playerRate(m.name, m.pos, 'target_share') || 0),
+                  att_share:    qb ? (playerRate(m.name, 'QB', 'att_share') || 0) : 0,
+                },
+                final:{ carry_share:0, target_share:0, att_share:0 },
+                gain:{ carry_share:[], target_share:[], att_share:[] } };
+    rows.push(r); byKey.set(n, r);
+  }
+
+  /* Vacated usage goes to active teammates in proportion to their own share,
+     weighted 3× toward the same position (RB carries go mostly to RBs). */
+  const allocate = (k, pool, budget, allowUp) => {
+    const act = rows.filter(r => r.active && pool(r)), gone = rows.filter(r => !r.active && pool(r));
+    for (const r of act) r.final[k] = r.raw[k];
+    let vacated = 0;
+    for (const g of gone) {
+      if (g.raw[k] < 0.005) continue;
+      const w = act.map(r => r.raw[k] * (r.pos === g.pos ? 3 : 1)), W = w.reduce((a,b) => a+b, 0);
+      if (!W) continue;
+      vacated += g.raw[k];
+      act.forEach((r,i) => {
+        const add = g.raw[k] * w[i] / W;
+        r.final[k] += add;
+        if (add >= 0.003) r.gain[k].push({ from:g.name, pos:g.pos, why:g.why, add });
+      });
+    }
+    const sum = act.reduce((a,r) => a + r.final[k], 0);
+    const scale = (sum > budget || (allowUp && sum > 0)) ? budget / sum : 1;
+    for (const r of act) { r.final[k] *= scale; for (const x of r.gain[k]) x.add *= scale; }
+    for (const r of gone) r.final[k] = 0;
+    return { sum, budget, scale, vacated };
+  };
+
+  // QB scrambles come out of the carry budget; the starter's rushing share sets it.
+  const qbCarry = rows.filter(r => r.active && r.pos === 'QB')
+                      .reduce((m, r) => Math.max(m, r.raw.carry_share), 0);
+  const alloc = {
+    carry_share:  allocate('carry_share',  r => r.pos !== 'QB', clamp(1 - qbCarry, 0.75, 0.98), false),
+    target_share: allocate('target_share', r => r.pos !== 'QB', 1.0, false),
+    // Somebody throws every pass: QB shares are normalized up as well as down.
+    att_share:    allocate('att_share',    r => r.pos === 'QB', 0.97, true),
+  };
+  for (const r of rows) if (r.pos === 'QB') r.final.carry_share = r.active ? r.raw.carry_share : 0;
+
+  const book = { team, rows, byKey, alloc,
+                 removed: rows.filter(r => !r.active && (r.raw.carry_share + r.raw.target_share + r.raw.att_share) > 0.01) };
+  _books.set(team, book);
+  return book;
+}
+
 function projectProp(pr, g, proj){
   const meta = playerMeta(pr.player);
   if (!meta) return null;
-  const team = meta.team;
+  const team = currentTeam(pr.player, meta);
   if (team !== g.home && team !== g.away) return null;
   const side = teamSide(proj, g, team);
   const pos = meta.pos;
   const def = MKT[pr.market];
   if (!def) return null;
 
-  let mean = null, parts = {};
+  const book = usageBook(team), me = book.byKey.get(normName(pr.player));
+  if (me && !me.active) return null;              // ruled out / inactive: nothing to project
+  const shareOf = k => me ? me.final[k] : playerRate(pr.player, pos, k);
+  const usage = k => me ? { key:k, me, book } : null;
+
+  let mean = null, parts = {}, used = null;
   if (pr.market === 'player_pass_yds') {
     if (pos !== 'QB') return null;
-    const share = clamp(playerRate(pr.player,pos,'att_share') || 0.97, 0, 1);
+    const share = clamp(shareOf('att_share') || 0.97, 0, 1);
+    used = usage('att_share');
     const ypa = playerRate(pr.player,pos,'ypa') || side.ypa;
     // player's own YPA, tempered by the matchup-adjusted team number
     const useYpa = (ypa*0.6 + side.ypa*0.4);
@@ -538,16 +667,18 @@ function projectProp(pr, g, proj){
     parts = { att:side.att*share, ypa:useYpa, share };
   }
   else if (pr.market === 'player_rush_yds') {
-    const cs = playerRate(pr.player,pos,'carry_share');
-    if (cs === null) return null;
+    const cs = shareOf('carry_share');
+    if (!cs) return null;
+    used = usage('carry_share');
     const ypc = playerRate(pr.player,pos,'ypc') || side.ypc;
     const useYpc = (ypc*0.55 + side.ypc*0.45);
     mean = side.carries * cs * useYpc;
     parts = { carries:side.carries*cs, ypc:useYpc, share:cs };
   }
   else if (pr.market === 'player_reception_yds' || pr.market === 'player_receptions') {
-    const ts = playerRate(pr.player,pos,'target_share');
-    if (ts === null) return null;
+    const ts = shareOf('target_share');
+    if (!ts) return null;
+    used = usage('target_share');
     const tgts = side.att * ts;
     if (pr.market === 'player_receptions') {
       const cr = playerRate(pr.player,pos,'catch_rate') || 0.65;
@@ -560,10 +691,11 @@ function projectProp(pr, g, proj){
     }
   }
   if (mean === null || !isFinite(mean) || mean <= 0) return null;
-  return { mean, sd:def.sd(mean), dist:def.dist, parts, meta, side, pos, team };
+  return { mean, sd:def.sd(mean), dist:def.dist, parts, meta, side, pos, team, usage:used };
 }
 
 function buildEdges(){
+  _books = new Map();
   if (!S.props.length) return { priced:[], unpriced:[] };
   const byGame = new Map();
   for (const g of S.games) { byGame.set(g.away+'@'+g.home, g); }
@@ -611,7 +743,10 @@ function buildEdges(){
   }
   // A model that says 95% against a real market is reporting a broken input,
   // not an edge. Quarantine these instead of ranking them first.
-  const suspect = out.filter(e => e.best.p > 0.90 || e.best.p < 0.10 || Math.abs(e.best.pts) > 20);
+  /* Judged on the RAW model probability: trust-weighting would otherwise launder a
+     94% raw call into a tidy-looking 62% and let it onto the board. */
+  const rawSide = e => e.best.dir === 'over' ? e.pRaw : 1 - e.pRaw;
+  const suspect = out.filter(e => rawSide(e) > 0.90 || rawSide(e) < 0.10 || Math.abs(e.best.pts) > 20);
   const lowvol = out.filter(e => e.lowVol && suspect.indexOf(e) < 0);
   const clean = out.filter(e => suspect.indexOf(e) < 0 && lowvol.indexOf(e) < 0);
   const priced = clean.filter(e => e.best.ev >= S.minev).sort((a,b) => b.best.ev - a.best.ev);
@@ -647,7 +782,8 @@ function calibrate(clean, priced){
     const pm = priced.filter(e => e.prop.market === m);
     const enough = xs.length >= CAL_MIN;
     const bias = (model - fair) * 100;
-    const row = { market:m, n:xs.length, fair, model, bias, raw:(raw - fair)*100, enough,
+    const spread = avg(xs, e => Math.abs(e.pRaw - e.fair.over)) * 100;
+    const row = { market:m, n:xs.length, fair, model, bias, raw:(raw - fair)*100, spread, enough,
                   bad: enough && Math.abs(bias) > CAL_WARN, priced:pm.length,
                   overShare: pm.length ? pm.filter(e => e.best.dir === 'over').length / pm.length : null };
     rows.push(row); byMarket[m] = row;
@@ -662,7 +798,7 @@ function calHtml(cal){
       <td>${MKT[r.market].label}${r.bad?' <span style="color:var(--r)">⚠</span>':''}</td>
       <td>${r.n}</td><td>${Math.round(r.model*100)}%</td><td>${Math.round(r.fair*100)}%</td>
       <td class="${r.bad?'':'hl'}" style="${r.bad?'color:var(--r);font-weight:600':''}">${r.enough?sg(r.bias):'—'}</td>
-      <td>${sg(r.raw)}</td>
+      <td>${sg(r.raw)}</td><td>${R(r.spread,1)}</td>
       <td>${r.overShare===null?'—':Math.round(r.overShare*100)+'% of '+r.priced}</td></tr>`;
   const bad = cal.bad;
   const msg = bad.length
@@ -673,11 +809,12 @@ function calHtml(cal){
   return `<div class="${bad.length?'warn':'note'}" style="margin-bottom:12px">
     <b>Calibration by market</b> — mean model P(over) vs devigged fair, per market.
     <div style="overflow-x:auto;margin:6px 0"><table>
-      <tr><th>market</th><th>n</th><th>model</th><th>fair</th><th>lean</th><th>raw</th><th>overs</th></tr>
+      <tr><th>market</th><th>n</th><th>model</th><th>fair</th><th>lean</th><th>raw</th><th>spread</th><th>overs</th></tr>
       ${cal.rows.map(tr).join('')}</table></div>
     ${msg}
     <div style="margin-top:4px;opacity:.8">Lean is after trust-weighting; raw is the unshrunk projection's
-      lean. Greyed rows have under ${CAL_MIN} props — too few to judge.</div></div>`;
+      lean. Spread is the average raw distance from fair in either direction — lean can sit at
+      zero while overs and unders cancel; spread can't. Greyed rows have under ${CAL_MIN} props.</div></div>`;
 }
 
 function edgeBadges(pr, g, pj, best, dv){
@@ -690,8 +827,11 @@ function edgeBadges(pr, g, pj, best, dv){
   if (opp < 8) b.push(['warn', `${Math.round(opp)} opp`]);
   if ((m.weeks_played || 0) < 2) b.push(['warn','1 game']);
   if (m.snap_drift !== null && Math.abs(m.snap_drift) > 0.15) b.push(['warn','role']);
-  const inj = S.injuries.find(i => normName(i.name) === normName(pr.player));
-  if (inj && /out|doubtful|questionable/i.test(inj.status)) b.push(['bad','⚠ '+inj.status.toLowerCase()]);
+  const u = pj.usage;
+  if (u && u.me.questionable) b.push(['bad','⚠ questionable']);
+  if (u && u.me.returning) b.push(['warn','returning']);
+  const got = u ? u.me.gain[u.key].reduce((a,x) => a + x.add, 0) : 0;
+  if (got >= 0.02) b.push(['info', `+${(got*100).toFixed(0)}% vacated`]);
   if (Math.abs(g.spread||0) >= 7) b.push(['info','script']);
   if (pj.side.ol.sev >= 0.3) b.push(['warn','o-line']);
   if (Math.abs(best.pts) > 12) b.push(['bad','check inputs']);
@@ -733,9 +873,24 @@ function whyFactors(e){
     used.push([dAtt > 0 ? 'up' : 'down',
       `${side.team} projected ${R(side.att,1)} pass attempts, ${R(Math.abs(dAtt),1)} ${dAtt>0?'above':'below'} league average`]);
 
-  // --- share
-  if (pj.parts.share !== undefined)
-    used.push(['flat', `${(pj.parts.share*100).toFixed(1)}% ${pr.market==='player_rush_yds'?'carry':'target'} share`]);
+  // --- share: his own, what he inherits, and the room cap
+  const pct = v => (v*100).toFixed(1) + '%';
+  const u = pj.usage;
+  if (u) {
+    const k = u.key, lbl = k === 'carry_share' ? 'carry' : k === 'att_share' ? 'pass-attempt' : 'target';
+    used.push(['flat', `${pct(u.me.raw[k])} ${lbl} share from his own usage`
+      + (u.me.returning ? ` — no games this season, so this is his ${PRIOR_SEASON} role` : '')]);
+    for (const x of u.me.gain[k])
+      used.push(['up', `+${pct(x.add)} ${lbl} share from ${x.pos} ${x.from} (${x.why})`]);
+    const al = u.book.alloc[k];
+    if (al.scale < 0.98)
+      used.push(['down', `${side.team}'s ${k === 'att_share' ? 'QBs' : 'skill players'} added up to ${pct(al.sum)} of the ${lbl}s — every share scaled ${R(al.scale,2)}× to fit`]);
+    else if (al.scale > 1.02)
+      used.push(['up', `${side.team}'s QBs only covered ${pct(al.sum)} of attempts — scaled up to ${pct(al.budget)}`]);
+    if (Math.abs(u.me.final[k] - u.me.raw[k]) >= 0.001)
+      used.push(['flat', `${pct(u.me.final[k])} ${lbl} share used in the projection`]);
+  } else if (pj.parts.share !== undefined)
+    used.push(['flat', `${pct(pj.parts.share)} ${pr.market==='player_rush_yds'?'carry':'target'} share`]);
 
   // --- matchup: opponent defense
   const dYpa = teamRate(opp,'defense','ypa'), dYpc = teamRate(opp,'defense','ypc');
@@ -768,10 +923,15 @@ function whyFactors(e){
   /* ---- context the model does NOT currently use ---- */
   const inj = S.injuries.filter(i => /out|doubtful|questionable/i.test(i.status));
 
+  // Out/Doubtful teammates are in the projection now (usage book). Questionable ones
+  // are not — they're expected to play — so they stay here as a thing to watch.
   const mates = inj.filter(i => i.team === side.team && SKILL_POS.test(i.position||'')
+                           && !OUT_RE.test(i.status || '')
                            && normName(i.name) !== normName(pr.player));
   for (const m of mates.slice(0,5))
-    context.push(['up', `Teammate ${m.position} ${m.name} is ${m.status.toLowerCase()}${m.injury?' ('+m.injury+')':''} — vacated usage could land here`]);
+    context.push(['flat', `Teammate ${m.position} ${m.name} is questionable${m.injury?' ('+m.injury+')':''} — modeled as playing; if he sits, his usage moves`]);
+  if (pj.usage && pj.usage.me.returning)
+    context.push(['flat', `No snaps this season yet — the market may know his workload is limited on return`]);
 
   const dbs = inj.filter(i => i.team === opp && DEF_POS.test(i.position||''));
   for (const d of dbs.slice(0,5))
@@ -801,8 +961,8 @@ function whyHtml(e){
     ${w.context.length ? `<div class="sec"><h3>Not in the model — check yourself</h3>
       <div class="note" style="opacity:.92">${w.context.map(li).join('')}</div>
       <div class="note" style="margin-top:7px;color:var(--y)">These do not move the projection above.
-        Injury redistribution and coverage matchups aren't modeled yet, so treat them as reasons to
-        look closer, not as part of the edge.</div></div>` : ''}`;
+        Out/Doubtful teammates are already redistributed; questionable players, opposing-defense
+        injuries and coverage matchups are not, so treat these as reasons to look closer, not as part of the edge.</div></div>` : ''}`;
 }
 
 /* ===================================================================== */
@@ -821,18 +981,29 @@ async function loadWeeks(){
 }
 
 async function loadAll(){
-  const [slate, rates, prior, pRates, pPrior] = await Promise.all([
+  /* A failed rate fetch must never look like a normal board: every player would
+     silently shrink to a position default. Record it and show it in red. */
+  S.dataErr = [];
+  const soft = (label, p, empty, count) => p.then(d => {
+      if (!count(d)) S.dataErr.push(label + ' came back empty');
+      return d;
+    }).catch(e => { S.dataErr.push(label + ' failed (' + e.message + ')'); return empty; });
+  const nTeams = d => Object.keys(d.teams || {}).length, nPlayers = d => Object.keys(d.players || {}).length;
+  const always = () => true;
+  const [slate, rates, prior, pRates, pPrior, inj, ros] = await Promise.all([
     jget(`/slate?season=${SEASON}&week=${S.week}`),
-    jget(`/team-rates?season=${SEASON}`).catch(() => ({teams:{},league:{}})),
-    jget(`/team-rates?season=${PRIOR_SEASON}`).catch(() => ({teams:{},league:{}})),
-    jget(`/player-rates?season=${SEASON}&lastn=${S.lastn>=99?10:S.lastn}&v=21`).catch(() => ({players:{}})),
-    jget(`/player-rates?season=${PRIOR_SEASON}&lastn=5&v=21`).catch(() => ({players:{}})),
+    soft(`${SEASON} team rates`, jget(`/team-rates?season=${SEASON}`), {teams:{},league:{}}, nTeams),
+    soft(`${PRIOR_SEASON} team priors`, jget(`/team-rates?season=${PRIOR_SEASON}`), {teams:{},league:{}}, nTeams),
+    soft(`${SEASON} player rates`, jget(`/player-rates?season=${SEASON}&lastn=${S.lastn>=99?10:S.lastn}&v=22`), {players:{}}, nPlayers),
+    soft(`${PRIOR_SEASON} player priors`, jget(`/player-rates?season=${PRIOR_SEASON}&lastn=5&v=22`), {players:{}}, nPlayers),
+    // Injuries can legitimately be empty early in a week; a failed fetch still gets reported.
+    soft('injury report', jget(`/injuries?season=${SEASON}&week=${S.week}`), {injuries:[]}, always),
+    soft('roster', jget(`/roster?season=${SEASON}&week=${S.week}`), {players:[]}, d => (d.players||[]).length),
   ]);
   S.games = slate.games || []; S.rates = rates; S.prior = prior;
   S.pRates = pRates; S.pPrior = pPrior; _pIndex = null;
-
-  jget(`/injuries?season=${SEASON}&week=${S.week}`)
-    .then(d => { S.injuries = d.injuries||[]; render(); }).catch(()=>{});
+  S.injuries = inj.injuries || [];
+  setRoster(ros);
   jget(`/oline?season=${SEASON}&week=${S.week}`)
     .then(d => { S.oline = d.teams||{}; render(); }).catch(()=>{});
   jget(`/props/status?week=${S.week}`)
@@ -840,6 +1011,12 @@ async function loadAll(){
     .catch(()=>{});
 
   loadWeather();
+}
+
+function setRoster(d){
+  const byName = new Map(), teams = new Set();
+  for (const p of (d.players || [])) { byName.set(normName(p.name), p); teams.add(p.team); }
+  S.roster = { loaded: byName.size > 0, week:d.week_used || null, byName, teams };
 }
 
 /* Reads whatever is already in KV. Costs nothing. */
@@ -1013,7 +1190,9 @@ function render(){
   }
   $('status').innerHTML = `<span>${S.games.length} games</span>
     <span>confidence <span class="conf-bar"><span class="conf-fill" style="width:${Math.round(conf*100)}%"></span></span> ${Math.round(conf*100)}%</span>
-    <span>priors ${PRIOR_SEASON} · current ${curN}g</span>${oddsTxt}`;
+    <span>priors ${PRIOR_SEASON} · ${Object.keys(S.pPrior.players||{}).length} players · current ${curN}g</span>
+    <span>${S.injuries.length} on injury report · roster ${S.roster.week ? 'wk '+S.roster.week : '—'}</span>${oddsTxt}`
+    + (S.dataErr.length ? `<span style="color:var(--r);font-weight:600">✕ ${S.dataErr.join(' · ')} — board unreliable, press ↺</span>` : '');
 
   if (S.tab === 'slate'){
     const key = { comp:g=>-composite(g,project(g)), time:g=>g.gameday+' '+g.gametime,
@@ -1053,7 +1232,7 @@ function render(){
       <div class="note" style="margin-bottom:10px">Deep reserves and situational players. The
         projection can't be trusted at this volume and plus-money prices inflate the EV.</div>` : '')
     + (res.suspect.length ? `<div class="sechead" style="color:var(--r)">
-        ${res.suspect.length} quarantined — model over 90% confident
+        ${res.suspect.length} quarantined — raw model over 90% confident
         <span style="float:right;text-transform:none;letter-spacing:0;color:var(--t3)">
         almost always a bad input, not an edge</span></div>
       <div class="note" style="margin-bottom:10px">These are excluded from the board.
@@ -1309,15 +1488,30 @@ $('bGuide').onclick = () => showModal(`<h2>How this works</h2>
   <p>If nothing clears the EV threshold, the board says so rather than showing you the least-bad
      six options. A flat week is information.</p>
 
+  <h4>Injuries and usage</h4>
+  <p>Each team's skill players share one pool of carries and one of targets. Anyone listed
+     <b>Out or Doubtful</b>, or not active on the weekly roster (IR, released, exempt), is removed and
+     his share goes to active teammates in proportion to their own roles, weighted toward his
+     position. If the room still adds up to more than the team has, every share is scaled down to
+     fit. Questionable players are modeled as playing and flagged. A player priced this week with
+     no games yet this season is treated as returning and uses his ${PRIOR_SEASON} role.</p>
+  <p>Players with no ${PRIOR_SEASON} history shrink toward a role prior set by their snap share
+     (fitted on ${PRIOR_SEASON}: RB carry share ≈ 0.95 × snap share), not a position average.</p>
+
   <h4>Badges</h4>
   <p>Silence means the data is clean.
-     <code>thin</code> under 3 games at this role ·
+     <code>N opp</code> fewer than 8 opportunities behind the projection ·
+     <code>1 game</code> one game this season ·
      <code>role</code> snap share moved more than 15 points ·
-     <code>script</code> spread of 7+, projection is script-sensitive ·
+     <code>⚠ questionable</code> on the report, modeled as playing ·
+     <code>returning</code> no games this season, using last year's role ·
+     <code>+N% vacated</code> inherits share from an injured teammate ·
+     <code>script</code> spread of 7+ ·
      <code>o-line</code> starting linemen on the report ·
-     <code>1-sided</code> only one price quoted, so the fair number still has vig in it ·
-     <code>shop</code> books disagree on the line ·
-     <code>absurd</code> edge too large to be credible.</p>
+     <code>check inputs</code> edge too large to be credible ·
+     <code>1-sided</code> only one price quoted, fair number still has vig ·
+     <code>lines vary</code> books disagree on the line ·
+     <code>… lean</code> this market is miscalibrated this week.</p>
 
   <h4>Market anchor</h4>
   <p>How much team-point projections lean on Vegas versus the rate model. Floor is 40% —
