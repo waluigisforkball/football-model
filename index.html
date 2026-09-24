@@ -178,7 +178,7 @@ textarea.inp{height:300px;resize:vertical;line-height:1.55}
 
 <div class="hdr">
   <div class="hdr-top">
-    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.11</span>
+    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.12</span>
     <div class="wk"><button id="wPrev">‹</button><div class="lbl" id="wLbl">Week —</div><button id="wNext">›</button></div>
     <div class="spacer"></div>
     <button class="btn pull" id="bPull">↓ Pull odds</button>
@@ -559,6 +559,13 @@ function oppCount(market, meta){
        : tot(st,'targets','targets_pg');
 }
 
+/* Model-trust sample constant, in opportunities: w = trust × n/(n+K).
+   15 everywhere is the original design. On the Week 3 slate that prints 62 edges;
+   the efficiency-k alternative (the same k that shrinks YPA/YPC/YPT) prints 3:
+     { player_pass_yds:250, player_rush_yds:110, player_reception_yds:50, player_receptions:50 } */
+const TRUST_K = { player_pass_yds:15, player_rush_yds:15, player_reception_yds:15, player_receptions:15 };
+const trustK = m => TRUST_K[m] || 15;
+
 /* Below these, the projection is standing on nothing worth pricing. */
 const MIN_VOL = { player_pass_yds:120, player_rush_yds:15, player_reception_yds:15, player_receptions:1.5 };
 
@@ -676,15 +683,25 @@ function usageBook(team){
     return { sum, budget, scale, vacated, trimmed: sum > budget };
   };
 
+  /* QB rooms aren't committees: one man takes the snaps. Books only post passing
+     yards for the expected starter, so a priced QB IS the starter — 97% of attempts,
+     whatever split the last two games (or last year's backup role) suggest. */
+  const priced = new Set(S.props.filter(p => p.market === 'player_pass_yds').map(p => normName(p.player)));
+  const starters = rows.filter(r => r.active && r.pos === 'QB' && priced.has(r.key));
+  const starter = starters.length === 1 ? starters[0] : null;
+  if (starter) starter.starter = true;
+
   // QB scrambles come out of the carry budget; the starter's rushing share sets it.
-  const qbCarry = rows.filter(r => r.active && r.pos === 'QB')
-                      .reduce((m, r) => Math.max(m, r.raw.carry_share), 0);
+  const qbCarry = starter ? starter.raw.carry_share
+    : rows.filter(r => r.active && r.pos === 'QB').reduce((m, r) => Math.max(m, r.raw.carry_share), 0);
   const alloc = {
     carry_share:  allocate('carry_share',  r => r.pos !== 'QB', clamp(1 - qbCarry, 0.75, 0.98), false),
     target_share: allocate('target_share', r => r.pos !== 'QB', 1.0, false),
-    // Somebody throws every pass: QB shares are normalized up as well as down.
-    att_share:    allocate('att_share',    r => r.pos === 'QB', 0.97, true),
+    // No priced starter: somebody throws every pass, so QB shares scale up as well as down.
+    att_share:    starter ? { sum:0.97, budget:0.97, scale:1, vacated:0, trimmed:false, starter:starter.name }
+                          : allocate('att_share', r => r.pos === 'QB', 0.97, true),
   };
+  if (starter) for (const r of rows) if (r.pos === 'QB') { r.final.att_share = r === starter ? 0.97 : 0; r.gain.att_share = []; }
   for (const r of rows) if (r.pos === 'QB') r.final.carry_share = r.active ? r.raw.carry_share : 0;
 
   const book = { team, rows, byKey, alloc,
@@ -771,7 +788,7 @@ function buildEdges(){
        At 6 targets the model barely moves the number; at 60 it carries real weight.
        This is why the board is quiet in September and louder in December. */
     const opp = oppCount(pr.market, pj.meta);
-    const w = (S.trust/100) * (opp/(opp + 15));
+    const w = (S.trust/100) * (opp/(opp + trustK(pr.market)));
     const pFairOver = dv.over !== null ? dv.over : 1 - dv.under;
     const pModelOver = w*pRaw + (1-w)*pFairOver;
 
@@ -946,7 +963,10 @@ function whyFactors(e){
     }
     else if (al.scale > 1.02)
       used.push(['up', `${side.team}'s QBs only covered ${pct(al.sum)} of attempts — scaled up to ${pct(al.budget)}`]);
-    if (Math.abs(u.me.final[k] - u.me.raw[k]) >= 0.001)
+    if (k === 'att_share' && u.me.starter)
+      used.push([u.me.raw[k] < 0.9 ? 'up' : 'flat', `Books priced him as ${side.team}'s passer this week — modeled at 97% of attempts`
+        + (u.me.raw[k] < 0.9 ? ` (his share so far: ${pct(u.me.raw[k])})` : '')]);
+    else if (Math.abs(u.me.final[k] - u.me.raw[k]) >= 0.001)
       used.push(['flat', `${pct(u.me.final[k])} ${lbl} share used in the projection`]);
   } else if (pj.parts.share !== undefined)
     used.push(['flat', `${pct(pj.parts.share)} ${pr.market==='player_rush_yds'?'carry':'target'} share`]);
