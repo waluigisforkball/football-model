@@ -248,9 +248,9 @@ const MKT = {
   // Rush/rec yards are right-skewed — a few long plays pull the mean above the
   // median, so a normal model would systematically overstate every OVER.
   // Receptions are a small count, so Poisson rather than a continuous fit.
-  player_pass_yds:      { label:'pass yds',   pos:'QB',       dist:'normal',    sd:m => Math.max(42, 0.28*m) },
-  player_rush_yds:      { label:'rush yds',   pos:'RB',       dist:'lognormal', sd:m => Math.max(18, 0.48*m) },
-  player_reception_yds: { label:'rec yds',    pos:'WR|TE|RB', dist:'lognormal', sd:m => Math.max(16, 0.55*m) },
+  player_pass_yds:      { label:'pass yds',   pos:'QB',       dist:'normal',    sd:m => Math.max(20, 0.28*m) },
+  player_rush_yds:      { label:'rush yds',   pos:'RB',       dist:'lognormal', sd:m => Math.max(7,  0.48*m) },
+  player_reception_yds: { label:'rec yds',    pos:'WR|TE|RB', dist:'lognormal', sd:m => Math.max(6,  0.55*m) },
   player_receptions:    { label:'receptions', pos:'WR|TE|RB', dist:'poisson',   sd:m => Math.max(1.2, 0.45*m) },
 };
 
@@ -527,7 +527,7 @@ function buildEdges(){
     const best = cands[0];
 
     out.push({
-      prop:pr, game:g, proj, pj, best, fair:dv,
+      prop:pr, game:g, proj, pj, best, fair:dv, pOverModel:pModelOver,
       badges: edgeBadges(pr, g, pj, best, dv),
     });
   }
@@ -536,7 +536,21 @@ function buildEdges(){
   const suspect = out.filter(e => e.best.p > 0.90 || e.best.p < 0.10 || Math.abs(e.best.pts) > 20);
   const clean = out.filter(e => suspect.indexOf(e) < 0);
   const priced = clean.filter(e => e.best.ev >= S.minev).sort((a,b) => b.best.ev - a.best.ev);
-  return { priced, all:clean, suspect };
+
+  /* Calibration. Across a whole slate the model should land close to the market
+     on average — the market is not systematically wrong in one direction. If the
+     mean model P(over) sits well away from the mean fair P(over), that is model
+     bias showing up many times, not many independent edges. */
+  let cal = null;
+  const withFair = clean.filter(e => e.fair.fair && e.fair.over !== null);
+  if (withFair.length >= 15) {
+    const mm = withFair.reduce((s,e) => s + e.pOverModel, 0) / withFair.length;
+    const mf = withFair.reduce((s,e) => s + e.fair.over, 0) / withFair.length;
+    const overs = priced.filter(e => e.best.dir === 'over').length;
+    cal = { model:mm, fair:mf, bias:(mm-mf)*100, n:withFair.length,
+            overShare: priced.length ? overs/priced.length : 0 };
+  }
+  return { priced, all:clean, suspect, cal };
 }
 
 function edgeBadges(pr, g, pj, best, dv){
@@ -808,7 +822,22 @@ function render(){
       Lower the threshold to see what's close, or leave it — a flat week is a real answer.</div>`;
     return;
   }
-  $('main').innerHTML = `<div class="sechead">${res.priced.length} edges ≥ +${S.minev}% EV
+  let calHtml = '';
+  if (res.cal) {
+    const b = res.cal.bias, bad = Math.abs(b) > 5, sk = res.cal.overShare;
+    calHtml = `<div class="${bad?'warn':'note'}" style="margin-bottom:12px">
+      <b>Calibration:</b> across ${res.cal.n} priced props the model averages
+      ${Math.round(res.cal.model*100)}% to the over against a market fair value of
+      ${Math.round(res.cal.fair*100)}% — a ${b>0?'+':''}${R(b,1)} point ${b>0?'over':'under'} lean.
+      ${Math.round(sk*100)}% of the edges below are overs.
+      ${bad ? '<br><b>This is large enough to be model bias rather than opportunity.</b> '
+            + 'A slate-wide lean in one direction means the projection is off, not that the '
+            + 'market is wrong ' + res.priced.length + ' times. Treat the board as untrustworthy '
+            + 'until the lean is closer to zero.'
+            : 'Small enough to be noise — the board is worth reading.'}
+    </div>`;
+  }
+  $('main').innerHTML = calHtml + `<div class="sechead">${res.priced.length} edges ≥ +${S.minev}% EV
       <span style="float:right;text-transform:none;letter-spacing:0">of ${res.all.length} priced</span></div>`
     + res.priced.map(edgeRow).join('')
     + (res.suspect.length ? `<div class="sechead" style="color:var(--r)">
@@ -1029,6 +1058,13 @@ $('bGuide').onclick = () => showModal(`<h2>How this works</h2>
      <i>below</i> the projection. Treating them as normal would inflate every OVER, which is the
      most common way a homemade prop model loses money. Receptions use Poisson, since it's a small
      count rather than a continuous quantity.</p>
+
+  <h4>Calibration</h4>
+  <p>Across a full slate the model should sit close to the market on average. The market is not
+     systematically wrong in one direction, so if the model averages well above or below fair value
+     across every prop, that is one bias appearing many times rather than many separate edges.
+     The banner reports that lean, and warns when it passes 5 points. A board with a big lean
+     should not be bet off, however many rows it prints.</p>
 
   <h4>Quarantine</h4>
   <p>Anything the model rates above 90% or below 10% is pulled off the board entirely. Against a
