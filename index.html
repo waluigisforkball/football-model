@@ -169,6 +169,36 @@ td.hl{color:var(--g);font-weight:600}
 .inp{width:100%;background:var(--bg3);border:1px solid var(--b1);border-radius:var(--r1);
      padding:8px 10px;font-family:var(--fm);font-size:12px;margin-top:6px}
 textarea.inp{height:300px;resize:vertical;line-height:1.55}
+.gpage{max-width:920px;margin:0 auto}
+.gback{background:none;border:none;color:var(--g);font-size:14px;font-weight:600;cursor:pointer;padding:4px 0;margin-bottom:8px}
+.ghead{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+.ghead h1{font-family:var(--fd);font-size:28px;font-weight:800;letter-spacing:-.6px;margin:0}
+.ghead h1 .at{color:var(--t3);font-weight:400;margin:0 4px}
+.gsub{font-family:var(--fm);font-size:12px;color:var(--t2);margin-top:3px}
+.gbox{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r2);padding:12px 13px;margin-bottom:10px}
+.wxline{display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-family:var(--fm);font-size:12.5px}
+.wxline.hit{border-color:var(--bl)}
+details.gx{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r2);margin-bottom:10px}
+details.gx>summary{list-style:none;cursor:pointer;padding:12px 13px;display:flex;align-items:center;gap:8px;
+  font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--t2)}
+details.gx>summary::-webkit-details-marker{display:none}
+details.gx>summary .sm{text-transform:none;letter-spacing:0;font-weight:500;color:var(--t3);font-size:12px}
+details.gx>summary .cv{margin-left:auto;color:var(--t3);transition:transform .15s}
+details.gx[open]>summary .cv{transform:rotate(90deg)}
+.gxb{padding:0 13px 13px}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:10px}
+.mc{background:var(--bg3);border-radius:var(--r1);padding:9px 10px 7px}
+.mc-h{display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px}
+.mc-f{display:flex;justify-content:space-between;font-family:var(--fm);font-size:10.5px;color:var(--t2);margin-top:2px}
+.mc-r{font-family:var(--fm);font-size:10.5px;color:var(--t3);min-height:14px;margin-top:2px}
+.mc svg circle{cursor:pointer}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--t2);margin-bottom:9px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.irow,.prow{display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid rgba(58,58,60,.5);font-size:12.5px}
+.irow:last-child,.prow:last-child{border-bottom:none}
+.prow{cursor:pointer}.prow:hover{background:var(--bg3)}
+.st{font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:5px;letter-spacing:.4px;min-width:26px;text-align:center}
+.st.out{background:var(--rd);color:var(--r)}.st.q{background:var(--yd);color:var(--y)}
 .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--bg4);
       border-top-color:var(--g);border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px}
 @keyframes s{to{transform:rotate(360deg)}}
@@ -178,7 +208,7 @@ textarea.inp{height:300px;resize:vertical;line-height:1.55}
 
 <div class="hdr">
   <div class="hdr-top">
-    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.14</span>
+    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.15</span>
     <div class="wk"><button id="wPrev">‹</button><div class="lbl" id="wLbl">Week —</div><button id="wNext">›</button></div>
     <div class="spacer"></div>
     <button class="btn pull" id="bPull">↓ Pull odds</button>
@@ -319,7 +349,7 @@ const S = { tab:'edges', week:null, weeks:[], games:[], rates:{}, prior:{},
             pRates:{}, pPrior:{}, injuries:[], oline:{}, wx:{},
             props:[], propsMeta:null, anchor:75, minev:2, olineImp:6, lastn:5, trust:50,
             mktFilter:new Set(Object.keys(MKT)), sort:'comp',
-            loading:false, pulling:false, err:null, dataErr:[],
+            loading:false, pulling:false, err:null, dataErr:[], game:null, gd:null, gdErr:null,
             roster:{ loaded:false, week:null, byName:new Map(), teams:new Set() } };
 
 const $ = id => document.getElementById(id);
@@ -1080,6 +1110,7 @@ async function dataFile(name, workerPath){
       if (r.ok) return await r.json();
     } catch(e) {}
   }
+  if (!workerPath) throw new Error(name + ' not built yet — run the nightly workflow');
   return jget(workerPath);
 }
 /** The nightly file carries every window (players[id].lasts[n]); expose the chosen one as .last. */
@@ -1288,8 +1319,8 @@ function render(){
   $('olineV').textContent = S.olineImp+'%';
   $('trustV').textContent = S.trust+'%';
   $('anchor').value = S.anchor; $('anchor2').value = S.anchor;
-  $('ctrlEdges').style.display = S.tab === 'edges' ? '' : 'none';
-  $('ctrlSlate').style.display = S.tab === 'slate' ? '' : 'none';
+  $('ctrlEdges').style.display = S.tab === 'edges' && !S.game ? '' : 'none';
+  $('ctrlSlate').style.display = S.tab === 'slate' && !S.game ? '' : 'none';
   $('bPull').disabled = S.pulling || S.loading;
   $('bPull').textContent = S.pulling ? '↓ pulling…' : '↓ Pull odds';
 
@@ -1331,6 +1362,8 @@ function render(){
     <span>${S.injuries.length} on injury report · roster ${S.roster.week ? 'wk '+S.roster.week : '—'}</span>
     ${dataAgeTxt()}${oddsTxt}`
     + (S.dataErr.length ? `<span style="color:var(--r);font-weight:600">✕ ${S.dataErr.join(' · ')} — board unreliable, press ↺</span>` : '');
+
+  if (S.game){ renderGame(); return; }
 
   if (S.tab === 'slate'){
     const key = { comp:g=>-composite(g,project(g)), time:g=>g.gameday+' '+g.gametime,
@@ -1388,8 +1421,8 @@ function render(){
 }
 
 /* ---------- detail panels ---------- */
-function openEdge(i){
-  const e = _edges[i]; if (!e) return;
+function openEdge(i){ const e = _edges[i]; if (e) openEdgeObj(e); }
+function openEdgeObj(e){
   const p = e.prop, b = e.best, pj = e.pj, side = pj.side;
   const parts = Object.entries(pj.parts).map(([k,v]) =>
     `<tr><td>${k.replace(/_/g,' ')}</td><td class="hl">${R(v,3)}</td></tr>`).join('');
@@ -1445,7 +1478,8 @@ function openEdge(i){
         best under ${am(p.under)}${p.under_book?' ('+p.under_book+')':''}.
       </div></div>
 
-    <div class="sec"><h3>Game</h3>
+    <div class="sec"><h3>Game <a style="float:right;color:var(--g);cursor:pointer;text-transform:none;letter-spacing:0;font-weight:600"
+        onclick="closeDetail();openGame('${e.game.game_id}')">Open game page ›</a></h3>
       <div class="note">${spreadTxt(e.game)} · total ${e.game.total} · ${fmtKick(e.game)}
         ${e.proj.wf.indoor?' · dome':(e.proj.wf.wind!==null?` · ${e.proj.wf.wind} mph wind`:'')}</div></div>`;
   $('detail').classList.add('open');
@@ -1469,23 +1503,13 @@ function usageRows(name, pos){
   }).join('');
 }
 
-function openGame(id){
-  const g = S.games.find(x => x.game_id === id); if (!g) return;
-  const p = project(g), conf = confidence(g);
+/* The game page has its own address (#game/<id>) so the back gesture and bookmarks work. */
+function openGame(id){ location.hash = 'game/' + id; }
+function leaveGame(){ if (location.hash) history.back(); }
+
+function projTable(g, p){
   const row = (l,a,h,hl) => `<tr><td>${l}</td><td class="${hl?'hl':''}">${a}</td><td class="${hl?'hl':''}">${h}</td></tr>`;
-  const ol = [g.away,g.home].map(t => S.oline[t] ? `${t}: ${S.oline[t].players.map(x=>x.name+' ('+x.status+')').join(', ')}` : null).filter(Boolean);
-  $('dpanel').innerHTML = `
-    <div class="dhead"><h2>${g.away} @ ${g.home}</h2><div class="spacer"></div>
-      <div style="font-family:var(--fm);font-size:17px;color:${compColor(composite(g,p))}">${composite(g,p).toFixed(1)}</div>
-      <button class="btn" onclick="closeDetail()">✕</button></div>
-    <div class="sec"><h3>Market</h3><div class="note">${spreadTxt(g)} · total ${g.total} · ${fmtKick(g)} · ${g.stadium||''}<br>
-      ${g.away_qb||'?'} vs ${g.home_qb||'?'} · ${g.roof||'outdoors'}, ${g.surface||'?'}
-      ${S.wx[g.game_id]?` · ${S.wx[g.game_id].wind} mph, ${S.wx[g.game_id].temp}°F`:''}</div></div>
-    ${p.disagree!==null&&Math.abs(p.disagree)>=4?`<div class="sec"><div class="warn">
-      <b>Model disagrees by ${R(Math.abs(p.disagree),1)} points</b> (${R(p.modelTotal,1)} vs ${g.total}).
-      Against a market this sharp, that usually means stale inputs, not an edge. Check injuries first.</div></div>`:''}
-    ${ol.length?`<div class="sec"><h3>O-line</h3><div class="note">${ol.join('<br>')}</div></div>`:''}
-    <div class="sec"><h3>Projection</h3><table><tr><th></th><th>${g.away}</th><th>${g.home}</th></tr>
+  return `<table><tr><th></th><th>${g.away}</th><th>${g.home}</th></tr>
       ${row('Market implied', R(p.mk.away,1), R(p.mk.home,1))}
       ${row('Model pts', R(p.mA,1), R(p.mH,1))}
       ${row(`Blended (${S.anchor}%)`, R(p.ptsAway,1), R(p.ptsHome,1), true)}
@@ -1496,9 +1520,206 @@ function openGame(id){
       ${row('Pass yards', R(p.away.pass_yards,0), R(p.home.pass_yards,0), true)}
       ${row('Carries', R(p.away.carries,1), R(p.home.carries,1))}
       ${row('Rush yards', R(p.away.rush_yards,0), R(p.home.rush_yards,0), true)}
-    </table><div class="note" style="margin-top:8px">Data confidence ${Math.round(conf*100)}%.</div></div>`;
-  $('detail').classList.add('open');
+    </table>`;
 }
+
+/* ===================================================================== */
+/* GAME PAGE — projection front and center; context in expandable panels */
+/* ===================================================================== */
+let _gameRows = [], _gameEdges = 0;
+
+/** Charts and injury snap shares come from the nightly build; load once, on first visit. */
+function loadGameData(){
+  if (S.gd || S.gdLoading) return;
+  S.gdLoading = true;
+  Promise.all([
+    dataFile(`team-weeks-${SEASON}.json`), dataFile(`team-weeks-${PRIOR_SEASON}.json`), dataFile(`snaps-${SEASON}.json`),
+  ]).then(([cur, prev, sn]) => {
+    const snaps = new Map(), prior = new Map();
+    for (const [k, v] of Object.entries(sn.players || {})) {
+      const bar = k.lastIndexOf('|'); snaps.set(normName(k.slice(0, bar)) + '|' + k.slice(bar+1), v);
+    }
+    for (const [k, v] of Object.entries(sn.prior_by_name || {})) prior.set(normName(k), v);
+    S.gd = { cur, prev, snaps, prior };
+  }).catch(e => { S.gdErr = e.message; })
+    .finally(() => { S.gdLoading = false; render(); });
+}
+
+const openState = store.get('nflslate.gopen', {});
+function gx(key, title, summary, body){
+  return `<details class="gx" data-k="${key}" ${openState[key] ? 'open' : ''}>
+    <summary>${title} <span class="sm">${summary}</span><span class="cv">›</span></summary>
+    <div class="gxb">${body}</div></details>`;
+}
+
+/** One matchup: a team's offense vs what the opposing defense allows, 2025 faded behind 2026. */
+function matchChart(label, stat, offT, defT){
+  const gd = S.gd, W = 290, H = 118, px = 8, py = 14, gap = 12;
+  const pick = (d, t, k) => ((d.teams || {})[t] || []).map(e => ({ v:e[k], w:e.w, opp:e.opp })).filter(e => e.v !== null);
+  const o0 = pick(gd.prev, offT, stat), o1 = pick(gd.cur, offT, stat);
+  const d0 = pick(gd.prev, defT, stat+'_a'), d1 = pick(gd.cur, defT, stat+'_a');
+  const lgSrc = (gd.cur.league && (gd.cur.teams[offT]||[]).length >= 4) ? gd.cur.league : gd.prev.league;
+  const lg = lgSrc ? lgSrc[stat] : null;
+  const n0 = Math.max(o0.length, d0.length, 1), n1 = Math.max(o1.length, d1.length, 1);
+  const all = [...o0, ...o1, ...d0, ...d1].map(e => e.v).concat(lg !== null ? [lg] : []);
+  if (!all.length) return '';
+  const lo = Math.min(...all) * 0.9, hi = Math.max(...all) * 1.05 || 1;
+  // last season takes ~70% of the width, this season the rest — this season stays readable at 2 games
+  const w0 = (W - px*2 - gap) * 0.68, w1 = (W - px*2 - gap) - w0;
+  const X0 = i => px + (n0 > 1 ? i * w0 / (n0 - 1) : w0/2), X1 = i => px + w0 + gap + (n1 > 1 ? i * w1 / (n1 - 1) : w1/2);
+  const Y = v => py + (H - py*2) * (1 - (v - lo) / (hi - lo));
+  const line = (a, X, col, op, sw) => a.length > 1 ? `<polyline fill="none" stroke="${col}" stroke-opacity="${op}" stroke-width="${sw}"
+      stroke-linejoin="round" points="${a.map((e,i) => X(i)+','+Y(e.v)).join(' ')}"/>` : '';
+  const dots = (a, X, col, op, r, yr, who) => a.map((e,i) => `<circle cx="${X(i)}" cy="${Y(e.v)}" r="${r}" fill="${col}" fill-opacity="${op}"
+      data-t="${who} · ${yr} wk ${e.w} vs ${e.opp}: ${Math.round(e.v)}"><title>${who} · ${yr} wk ${e.w} vs ${e.opp}: ${Math.round(e.v)}</title></circle>`).join('');
+  const avg = a => a.length ? Math.round(a.reduce((s,e) => s + e.v, 0) / a.length) : '—';
+  const divX = px + w0 + gap/2;
+  const oLbl = `${offT} ${label.toLowerCase()}`, dLbl = `${defT} allowed`;
+  return `<div class="mc">
+    <div class="mc-h"><b>${label}</b><span style="font-family:var(--fm);color:var(--t3)">${offT} O vs ${defT} D</span></div>
+    <svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${oLbl} versus ${dLbl}">
+      ${lg !== null ? `<line x1="${px}" x2="${W-px}" y1="${Y(lg)}" y2="${Y(lg)}" stroke="#8e8e93" stroke-dasharray="3 3" stroke-width="1"/>` : ''}
+      <line x1="${divX}" x2="${divX}" y1="3" y2="${H-3}" stroke="#48484a" stroke-width="1"/>
+      <text x="${divX-4}" y="10" text-anchor="end" font-size="9" fill="#8e8e93">${PRIOR_SEASON}</text>
+      <text x="${divX+4}" y="10" font-size="9" fill="#ff9f0a">${SEASON}</text>
+      ${line(o0, X0, '#ff9f0a', .22, 1.4)}${line(d0, X0, '#0a84ff', .22, 1.4)}
+      ${line(o1, X1, '#ff9f0a', 1, 2.4)}${line(d1, X1, '#0a84ff', 1, 2.4)}
+      ${dots(o0, X0, '#ff9f0a', .3, 2.2, PRIOR_SEASON, oLbl)}${dots(d0, X0, '#0a84ff', .3, 2.2, PRIOR_SEASON, dLbl)}
+      ${dots(o1, X1, '#ff9f0a', 1, 3.6, SEASON, oLbl)}${dots(d1, X1, '#0a84ff', 1, 3.6, SEASON, dLbl)}
+    </svg>
+    <div class="mc-f"><span style="color:var(--g)">${offT} ${avg(o1)}/g</span><span style="color:var(--bl)">${defT} allows ${avg(d1)}/g</span>
+      <span>lg ${lg !== null ? Math.round(lg) : '—'}</span></div>
+    <div class="mc-r">tap a point</div></div>`;
+}
+
+function chartsBody(g){
+  if (S.gdErr) return `<div class="note">Charts unavailable: ${S.gdErr}.</div>`;
+  if (!S.gd) return `<div class="note"><span class="spin"></span> loading…</div>`;
+  const pairs = [['Rushing','rush'],['Passing','pass'],['Points','pts']];
+  return `<div class="legend"><span><i style="background:var(--g)"></i>offense</span>
+      <span><i style="background:var(--bl)"></i>defense allowed</span>
+      <span><i style="background:none;border-top:1px dashed #8e8e93;height:0"></i>league avg</span>
+      <span style="color:var(--t3)">faded = ${PRIOR_SEASON} · bright = ${SEASON}</span></div>
+    <div class="mgrid">${pairs.map(([l,k]) => matchChart(l, k, g.away, g.home) + matchChart(l, k, g.home, g.away)).join('')}</div>`;
+}
+
+/** Injury-report regulars, both sides of the ball: 60%+ of snaps this season or last — 40%+ for
+    QB/RB/WR/TE, who rotate (a slot receiver or lead back often sits at 45-55% and still matters). */
+function notableInjuries(g){
+  const rank = s => /^out/i.test(s) ? 0 : /^doubt/i.test(s) ? 1 : 2;
+  const out = [];
+  for (const i of S.injuries) {
+    if (i.team !== g.home && i.team !== g.away) continue;
+    if (!/out|doubtful|questionable/i.test(i.status || '')) continue;
+    const n = normName(i.name);
+    const c = S.gd ? S.gd.snaps.get(n + '|' + i.team) : null, p = S.gd ? S.gd.prior.get(n) : null;
+    const off = Math.max(c ? c[1] : 0, p ? p[1] : 0), def = Math.max(c ? c[2] : 0, p ? p[2] : 0);
+    const bar = SKILL_POS.test(i.position || '') ? 0.4 : 0.6;
+    if (S.gd && Math.max(off, def) < bar) continue;
+    out.push({ ...i, side: off >= def ? 'O' : 'D', snap: Math.max(off, def),
+               modeled: OUT_RE.test(i.status) && SKILL_POS.test(i.position || '') });
+  }
+  return out.sort((a,b) => rank(a.status) - rank(b.status) || b.snap - a.snap);
+}
+
+function injuriesBody(g, list){
+  if (!S.gd && !S.gdErr) return `<div class="note"><span class="spin"></span> loading snap shares…</div>`;
+  const team = t => {
+    const xs = list.filter(i => i.team === t);
+    return `<div class="gbox" style="margin:0;background:var(--bg3);border:none">
+      <div style="font-family:var(--fd);font-weight:700;margin-bottom:3px">${t}</div>
+      ${xs.length ? xs.map(i => `<div class="irow">
+          <span class="st ${/^(out|doubt)/i.test(i.status)?'out':'q'}">${/^out/i.test(i.status)?'OUT':/^doubt/i.test(i.status)?'D':'Q'}</span>
+          <span style="flex:1">${i.position} ${i.name}${i.modeled?' <span class="bdg info" style="margin-left:4px">in projections</span>':''}</span>
+          <span style="color:var(--t3);font-size:11.5px;font-family:var(--fm)">${i.injury?i.injury.toLowerCase()+' · ':''}${i.side} ${Math.round(i.snap*100)}%</span>
+        </div>`).join('') : '<div class="note">No starters on the report.</div>'}
+    </div>`;
+  };
+  return `<div class="mgrid">${team(g.away)}${team(g.home)}</div>
+    <div class="note" style="margin-top:7px">Regulars only: 60%+ of snaps, or 40%+ for QB/RB/WR/TE. Out/Doubtful skill players are already
+      redistributed in the projections; everything else is context the model doesn't use.</div>`;
+}
+
+function weatherLine(g, p){
+  const wx = S.wx[g.game_id];
+  if (p.wf.indoor) return `<div class="gbox wxline"><span>Indoors</span><span style="color:var(--t3);font-family:var(--fb)">no weather adjustment</span></div>`;
+  if (!wx) return `<div class="gbox wxline"><span style="color:var(--t3);font-family:var(--fb)">Forecast not available yet (${g.roof||'outdoors'})</span></div>`;
+  const hit = p.wf.mult < 1;
+  return `<div class="gbox wxline ${hit?'hit':''}"><span>💨 ${wx.wind} mph</span><span>🌡 ${wx.temp}°F</span>
+    ${wx.precip !== null && wx.precip !== undefined ? `<span>☔ ${wx.precip}%</span>` : ''}
+    <span style="color:${hit?'var(--bl)':'var(--t3)'};font-family:var(--fb)">${hit
+      ? `wind trims passing efficiency ${Math.round((1-p.wf.mult)*100)}% in the model` : 'no passing adjustment'}</span></div>`;
+}
+
+function propsBody(g){
+  _gameRows = []; _gameEdges = 0;
+  if (!S.props.length) return `<div class="note">No odds pulled for Week ${S.week}. Use ↓ Pull odds on the Edges tab.</div>`;
+  const res = buildEdges();
+  const tag = new Map();
+  for (const e of res.priced) tag.set(e, 'edge');
+  for (const e of res.suspect || []) tag.set(e, 'quarantined');
+  for (const e of res.lowvol || []) tag.set(e, 'low volume');
+  _gameRows = [...(res.all || []), ...(res.suspect || []), ...(res.lowvol || [])]
+    .filter(e => e.game.game_id === g.game_id)
+    .sort((a,b) => (tag.get(a)==='edge'?0:1) - (tag.get(b)==='edge'?0:1) || b.best.ev - a.best.ev);
+  _gameEdges = _gameRows.filter(e => tag.get(e) === 'edge').length;
+  if (!_gameRows.length) return `<div class="note">No projectable props posted for this game.</div>`;
+  return _gameRows.map((e,i) => {
+    const t = tag.get(e), b = e.best;
+    return `<div class="prow" data-i="${i}">
+      <span style="flex:1">${e.prop.player} <span style="color:var(--t3);font-size:11px">${MKT[e.prop.market].label}</span>
+        ${t==='edge'?`<span class="e-dir ${b.dir}" style="margin-left:4px">${b.dir.toUpperCase()} ${R(b.ev,1)}%</span>`
+          : t ? `<span class="bdg ${t==='quarantined'?'bad':''}" style="margin-left:4px">${t}</span>` : ''}</span>
+      <span style="font-family:var(--fm);color:var(--t2);width:52px;text-align:right">${e.prop.line}</span>
+      <span style="font-family:var(--fm);color:var(--g);width:70px;text-align:right">proj ${R(e.pj.mean, e.prop.market==='player_receptions'?1:0)}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderGame(){
+  const g = S.games.find(x => x.game_id === S.game);
+  if (!g) { $('main').innerHTML = `<div class="gpage"><button class="gback" onclick="leaveGame()">‹ Slate</button>
+      <div class="empty">That game isn't on the Week ${S.week} slate.</div></div>`; return; }
+  loadGameData();
+  const p = project(g), conf = confidence(g), comp = composite(g,p);
+  const ol = [g.away,g.home].map(t => S.oline[t] ? `${t}: ${S.oline[t].players.map(x=>x.name+' ('+x.status+')').join(', ')}` : null).filter(Boolean);
+  const inj = notableInjuries(g);
+  const nOut = inj.filter(i => /^(out|doubt)/i.test(i.status)).length, nQ = inj.length - nOut;
+  const props = S.props.filter(x => x.game === g.away+'@'+g.home).length;
+  const pb = propsBody(g);
+  const nEdge = _gameEdges;
+
+  $('main').innerHTML = `<div class="gpage">
+    <button class="gback" onclick="leaveGame()">‹ ${S.tab === 'slate' ? 'Slate' : 'Edges'}</button>
+    <div class="ghead">
+      <div style="flex:1;min-width:220px">
+        <h1>${g.away}<span class="at">@</span>${g.home}</h1>
+        <div class="gsub">${spreadTxt(g)} · total ${g.total ?? '—'} · ${fmtKick(g)}</div>
+        <div class="gsub" style="color:var(--t3)">${g.away_qb||'?'} vs ${g.home_qb||'?'} · ${g.stadium||''}${g.surface?' · '+g.surface:''}</div>
+      </div>
+      <div class="comp"><div class="comp-v" style="color:${compColor(comp)}">${comp.toFixed(1)}</div><div class="comp-l">composite</div></div>
+    </div>
+    ${p.disagree!==null&&Math.abs(p.disagree)>=4?`<div class="warn" style="margin-bottom:10px">
+      <b>Model disagrees by ${R(Math.abs(p.disagree),1)} points</b> (${R(p.modelTotal,1)} vs ${g.total}).
+      Against a market this sharp, that usually means stale inputs, not an edge. Check injuries first.</div>`:''}
+    <div class="gbox">${projTable(g, p)}
+      <div class="note" style="margin-top:8px">Data confidence ${Math.round(conf*100)}%.${ol.length?' O-line on the report — '+ol.join(' · '):''}</div></div>
+    ${weatherLine(g, p)}
+    ${gx('charts', 'Matchups', 'rushing · passing · points', chartsBody(g))}
+    ${gx('inj', 'Notable injuries', !S.gd && !S.gdErr ? '…' : inj.length ? `${nOut} out · ${nQ} questionable` : 'none', injuriesBody(g, inj))}
+    ${gx('props', 'Props in this game', props ? `${props} posted${nEdge?` · ${nEdge} edge${nEdge>1?'s':''}`:''}` : 'no odds', pb)}
+  </div>`;
+
+  document.querySelectorAll('details.gx').forEach(d => d.addEventListener('toggle', () => {
+    openState[d.dataset.k] = d.open; store.set('nflslate.gopen', openState);
+  }));
+  document.querySelectorAll('.mc').forEach(mc => mc.addEventListener('click', ev => {
+    const c = ev.target.closest('circle'); if (c) mc.querySelector('.mc-r').textContent = c.dataset.t;
+  }));
+  document.querySelectorAll('.prow').forEach(el => el.onclick = () => { const e = _gameRows[+el.dataset.i]; if (e) openEdgeObj(e); });
+  window.scrollTo(0, 0);
+}
+
 function closeDetail(){ $('detail').classList.remove('open'); }
 function closeModal(){ $('modal').classList.remove('open'); }
 function showModal(h){ $('mpanel').innerHTML = h; $('modal').classList.add('open'); }
@@ -1535,8 +1756,15 @@ function rundown(){
 /* ===================================================================== */
 /* EVENTS                                                                 */
 /* ===================================================================== */
-$('wPrev').onclick = () => { if (S.week>1){ S.week--; S.props=[]; S.propsMeta=null; load(); } };
-$('wNext').onclick = () => { if (S.week<18){ S.week++; S.props=[]; S.propsMeta=null; load(); } };
+$('wPrev').onclick = () => { if (S.week>1){ S.week--; S.props=[]; S.propsMeta=null; if (S.game) history.replaceState(null,'',location.pathname); S.game=null; load(); } };
+$('wNext').onclick = () => { if (S.week<18){ S.week++; S.props=[]; S.propsMeta=null; if (S.game) history.replaceState(null,'',location.pathname); S.game=null; load(); } };
+function syncRoute(){
+  const m = location.hash.match(/^#game\/(.+)$/);
+  S.game = m ? decodeURIComponent(m[1]) : null;
+  if (!S.game) window.scrollTo(0, 0);
+  render();
+}
+window.addEventListener('hashchange', syncRoute);
 $('bRefresh').onclick = load;
 $('minev').oninput = e => { S.minev = +e.target.value; render(); };
 $('anchor').oninput = e => { S.anchor = +e.target.value; render(); };
@@ -1548,6 +1776,7 @@ $('sort').onchange = e => { S.sort = e.target.value; render(); };
 $('detail').onclick = e => { if (e.target.id === 'detail') closeDetail(); };
 $('modal').onclick = e => { if (e.target.id === 'modal') closeModal(); };
 document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  if (S.game) { history.replaceState(null,'',location.pathname); S.game = null; }
   S.tab = t.dataset.tab;
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === t));
   render();
@@ -1658,6 +1887,13 @@ $('bGuide').onclick = () => showModal(`<h2>How this works</h2>
   <p>Players with no ${PRIOR_SEASON} history shrink toward a role prior set by their snap share
      (fitted on ${PRIOR_SEASON}: RB carry share ≈ 0.95 × snap share), not a position average.</p>
 
+  <h4>Game page</h4>
+  <p>Tap any game on the Slate tab. The projection table sits on top; weather is one line; matchup
+     charts, notable injuries and the game's props open on demand and stay the way you left them.
+     Charts put each offense against what the opposing defense allows — faded ${PRIOR_SEASON} behind
+     bright ${SEASON}, dashed league average. Tap a point for the week and opponent. None of this moves
+     the projections; it's context for reading them.</p>
+
   <h4>Badges</h4>
   <p>Silence means the data is clean.
      <code>N opp</code> fewer than 8 opportunities behind the projection ·
@@ -1692,13 +1928,18 @@ $('bGuide').onclick = () => showModal(`<h2>How this works</h2>
   <div style="margin-top:14px"><button class="btn" onclick="closeModal()">Close</button></div>`);
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape'){ closeDetail(); closeModal(); }
-  if (!$('detail').classList.contains('open') && !$('modal').classList.contains('open')){
+  if (e.key === 'Escape'){
+    const layered = $('detail').classList.contains('open') || $('modal').classList.contains('open');
+    closeDetail(); closeModal();
+    if (!layered && S.game) leaveGame();
+  }
+  if (!S.game && !$('detail').classList.contains('open') && !$('modal').classList.contains('open')){
     if (e.key === 'ArrowLeft') $('wPrev').click();
     if (e.key === 'ArrowRight') $('wNext').click();
   }
 });
 
+{ const m = location.hash.match(/^#game\/(.+)$/); if (m) S.game = decodeURIComponent(m[1]); }
 load();
 </script>
 </body>
