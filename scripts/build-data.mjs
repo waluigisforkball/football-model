@@ -22,6 +22,8 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import zlib from 'node:zlib';
+import { parsePbp, matchupRatings } from './matchup-ratings.mjs';
 
 const ROOT    = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT     = path.join(ROOT, 'data');
@@ -201,6 +203,20 @@ async function resultsFile(season) {
   return { season, plays: graded };
 }
 
+/** Opponent-adjusted run/pass ratings from play-by-play (display only — see matchup-ratings.mjs).
+    The gzipped CSV is ~5x smaller to download. PBP_FILE=path.csv.gz uses a local copy. */
+async function matchupFile(season) {
+  let buf;
+  if (process.env.PBP_FILE) buf = fs.readFileSync(process.env.PBP_FILE);
+  else {
+    const r = await fetch(`https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_${season}.csv.gz`,
+                          { headers: { 'User-Agent': 'nfl-slate-build' } });
+    if (!r.ok) throw new Error(`upstream ${r.status} for play_by_play_${season}.csv.gz`);
+    buf = Buffer.from(await r.arrayBuffer());
+  }
+  return matchupRatings(parsePbp(zlib.gunzipSync(buf).toString('utf8')), season);
+}
+
 async function statsThroughWeek(season) {
   const rows = W.parseCSV(await text(`stats_team/stats_team_week_${season}.csv`));
   return rows.filter(r => r.season_type === 'REG').reduce((m, r) => Math.max(m, +r.week || 0), 0);
@@ -242,6 +258,7 @@ await job(`roster-${SEASON}.json`,      () => rosterFile(SEASON));
 await job(`team-weeks-${PRIOR}.json`,  () => teamWeeksFile(PRIOR));
 await job(`team-weeks-${SEASON}.json`, () => teamWeeksFile(SEASON));
 await job(`snaps-${SEASON}.json`,      () => snapsFile(SEASON, PRIOR));
+await job(`matchup-ratings-${SEASON}.json`, () => matchupFile(SEASON));
 // Grading depends on the worker being up. A worker hiccup must never block the
 // rate tables from committing, so its failure is logged, not fatal.
 { const n = errors.length;
