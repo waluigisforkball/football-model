@@ -491,7 +491,7 @@ async function propsStatus(url, env) {
 }
 
 async function oddsFetch(env, path, params) {
-  const keys = [env.ODDS_KEY_1, env.ODDS_KEY_2, env.ODDS_KEY_3].filter(Boolean);
+     const keys = [env.ODDS_KEY_1, env.ODDS_KEY_2, env.ODDS_KEY_3, env.ODDS_KEY_4].filter(Boolean);
   if (!keys.length) throw new Error('no ODDS_KEY_* secrets configured');
   let lastErr = null;
   for (const key of keys) {
