@@ -25,9 +25,15 @@
  *  Early-season shrinkage: every team is treated as having k extra league-average
  *  games — k = 2 for passing, 3 for rushing — so a rating = raw × games/(games+k).
  *  Unlike the main model, last season is NOT blended in.
+ *
+ *  Windows ("Last 3 wks", "Last 5 wks"): a team's rating from only its games in
+ *  those weeks, each game still adjusted by the opponent's FULL-season number
+ *  (a 3-game sample can't also estimate every opponent). Same shrinkage, on the
+ *  window's game count. Written only once the season is longer than the window.
  */
 
 export const K_GAMES = { pass: 2, rush: 3 };
+export const WINDOWS = [3, 5];
 const WP_LO = 0.10, WP_HI = 0.90, MAX_ITER = 10, TOL = 1e-5;
 const COLS = ['season_type', 'game_id', 'week', 'posteam', 'defteam', 'down', 'ydstogo', 'yards_gained',
               'pass', 'rush', 'wp', 'qb_kneel', 'qb_spike', 'play_type', 'two_point_attempt'];
@@ -145,7 +151,25 @@ function solve(games, lg, k) {
     off = nOff; def = nDef; raw = { off: rOff, def: rDef };
     if (delta < TOL) break;
   }
-  return { off, def, raw, iters: Math.min(iters, MAX_ITER),
+  /* One side's ratings from a subset of each team's games (the window), opponents
+     adjusted with the converged full-season edges — the same formula as the last pass. */
+  const subset = keep => {
+    const r = { off: new Map(), def: new Map(), raw: { off: new Map(), def: new Map() },
+                games: { off: new Map(), def: new Map() }, plays: { off: new Map(), def: new Map() } };
+    for (const t of teams) {
+      const og = byOff.get(t).filter(keep), dg = byDef.get(t).filter(keep);
+      const oxs = og.map(g => { const d = sideEdge(byDef.get(g.def), off, 'off', g); return { n: g.n, v: g.v - shrink(d.e, d.games) }; });
+      const dxs = dg.map(g => { const o = sideEdge(byOff.get(g.off), def, 'def', g); return { n: g.n, v: g.v - shrink(o.e, o.games) }; });
+      const om = wmean(oxs), dm = wmean(dxs);
+      r.raw.off.set(t, om === null ? null : om - lg); r.off.set(t, shrink(r.raw.off.get(t), oxs.length));
+      r.raw.def.set(t, dm === null ? null : dm - lg); r.def.set(t, shrink(r.raw.def.get(t), dxs.length));
+      r.games.off.set(t, og.length); r.games.def.set(t, dg.length);
+      r.plays.off.set(t, og.reduce((s, g) => s + g.n, 0)); r.plays.def.set(t, dg.reduce((s, g) => s + g.n, 0));
+    }
+    return r;
+  };
+
+  return { off, def, raw, iters: Math.min(iters, MAX_ITER), subset,
            games: { off: t => byOff.get(t).length, def: t => byDef.get(t).length },
            plays: { off: t => byOff.get(t).reduce((s, g) => s + g.n, 0), def: t => byDef.get(t).reduce((s, g) => s + g.n, 0) } };
 }
@@ -177,7 +201,7 @@ export function matchupRatings(rows, season) {
     for (const p of plays) {
       if (p.unit !== unit) continue;
       const key = p.game + '|' + p.off;
-      const a = agg.get(key) || { id: p.game, off: p.off, def: p.def, n: 0, s: 0, y: 0 };
+      const a = agg.get(key) || { id: p.game, week: p.week, off: p.off, def: p.def, n: 0, s: 0, y: 0 };
       a.n++; a.s += p.success; a.y += p.yards;
       agg.set(key, a);
     }
@@ -208,7 +232,29 @@ export function matchupRatings(rows, season) {
         games: sr.games[side](t), plays: sr.plays[side](t),
       };
     }
+
+    // Windows: only once the season is longer than the window (before that it IS the season).
+    for (const n of WINDOWS) {
+      if (out.through_week <= n) continue;
+      const from = out.through_week - n + 1, keep = g => g.week >= from;
+      const ws = sr.subset(keep), wy = yp.subset(keep);
+      const W = ((out.windows = out.windows || {})[n] = out.windows[n] || { from_week: from, through_week: out.through_week, teams: {} });
+      const wgood = { off: new Map(), def: new Map() };
+      for (const t of ws.off.keys()) { wgood.off.set(t, ws.off.get(t)); wgood.def.set(t, -ws.def.get(t)); }
+      const wpct = { off: percentiles(wgood.off), def: percentiles(wgood.def) };
+      for (const side of ['off', 'def']) for (const t of ws[side].keys()) {
+        const e = ws[side].get(t), ey = wy[side].get(t), sign = side === 'off' ? 1 : -1, rawE = ws.raw[side].get(t);
+        (W.teams[t] = W.teams[t] || {})[`${unit}_${side}`] = {
+          pp: r1(sign * e * 100), edge: r4(e), sr: r4(lgSr + e),
+          raw_pp: rawE === null ? null : r1(sign * rawE * 100),
+          ypp: r2(lgY + ey), ypp_edge: r2(ey), pct: wpct[side].get(t),
+          games: ws.games[side].get(t), plays: ws.plays[side].get(t),
+        };
+      }
+    }
   }
+  if (out.windows) for (const W of Object.values(out.windows))
+    W.teams = Object.fromEntries(Object.keys(W.teams).sort().map(t => [t, W.teams[t]]));
   // Stable key order so an unchanged day writes an identical file (no commit).
   out.teams = Object.fromEntries(Object.keys(out.teams).sort().map(t => [t, out.teams[t]]));
   return out;
