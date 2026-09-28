@@ -213,3 +213,20 @@ export function matchupRatings(rows, season) {
   out.teams = Object.fromEntries(Object.keys(out.teams).sort().map(t => [t, out.teams[t]]));
   return out;
 }
+
+/** Team names, colours and logo links from nflverse's teams_colors_logos.csv, keyed by
+    abbreviation. Logos are LINKS to images hosted by ESPN (Wikipedia as a backup) — nothing
+    is copied into the repo. Only https links on those two hosts are kept. */
+const LOGO_HOST = /^https:\/\/(a\.espncdn\.com|upload\.wikimedia\.org)\//;
+const HEX = /^#[0-9a-fA-F]{6}$/;
+export function teamInfo(rows, abbrs) {
+  const out = {};
+  for (const r of rows) {
+    if (!abbrs.has(r.team_abbr)) continue;
+    const logos = [r.team_logo_espn, r.team_logo_wikipedia].filter(u => LOGO_HOST.test(u || ''));
+    out[r.team_abbr] = { name: r.team_name || r.team_abbr, nick: r.team_nick || '',
+      color: HEX.test(r.team_color) ? r.team_color : null,
+      color2: HEX.test(r.team_color2) ? r.team_color2 : null, logos };
+  }
+  return Object.fromEntries(Object.keys(out).sort().map(k => [k, out[k]]));
+}
