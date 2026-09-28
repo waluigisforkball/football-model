@@ -3,7 +3,7 @@
  *
  * Bindings required (Cloudflare dashboard → Worker → Settings):
  *   KV namespace : ODDS_CACHE
- *   Secrets      : ODDS_KEY_1, ODDS_KEY_2, ODDS_KEY_3
+ *   Secrets      : ODDS_KEY_1, ODDS_KEY_2, ODDS_KEY_3, ODDS_KEY_4
  *
  * Endpoints:
  *   GET /health
