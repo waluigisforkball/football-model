@@ -225,13 +225,35 @@ details.gx[open]>summary .cv{transform:rotate(90deg)}
 .res.push,.res.void{background:var(--bg4);color:var(--t2)}.res.pending{background:var(--bg3);color:var(--t3)}
 .betbtn.on{background:var(--gd);border-color:var(--g);color:var(--g)}
 .star{color:var(--g)}
+
+/* ---------- run/pass matchup ratings ---------- */
+.mstrip{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:9px;border-radius:var(--r1)}
+.mstrip:hover .mcell{background:var(--bg4)}
+.mcell{background:var(--bg3);border:1px solid transparent;border-radius:var(--r1);padding:5px 6px;min-width:0}
+.mcell.hi{border-color:var(--g);background:var(--gd)}
+.mcell .k{font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mcell .v{font-family:var(--fm);font-size:13px;font-weight:600;margin-top:1px;display:flex;align-items:baseline;gap:4px;flex-wrap:wrap}
+.mcell .d{font-size:10px;font-weight:600}
+.up{color:var(--gr)}.dn{color:var(--r)}.flat{color:var(--t3)}
+.mtbl td.hi{color:var(--g);font-weight:600}
+.mtbl tr.hi td{background:var(--gd)}
+.rk th{cursor:pointer;user-select:none}
+.rk th.on{color:var(--g)}
+.rk td.u{line-height:1.25}
+.mtbl td,.rk td{vertical-align:middle}
+td.u small{display:block;font-size:9.5px;color:var(--t3);font-weight:400}
+.rk td.nm{text-align:left}
+.rk tr[data-team]{cursor:pointer}
+.mtbl td:first-child,.rk td:first-child{white-space:nowrap}
+.rk tr[data-team]:hover td{background:var(--bg3)}
+.pc-hi{color:var(--gr)}.pc-lo{color:var(--r)}
 </style>
 </head>
 <body>
 
 <div class="hdr">
   <div class="hdr-top">
-    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.19</span>
+    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.20</span>
     <div class="wk"><button id="wPrev">‹</button><div class="lbl" id="wLbl">Week —</div><button id="wNext">›</button></div>
     <div class="spacer"></div>
     <button class="btn pull" id="bPull">↓ Pull odds</button>
@@ -244,6 +266,7 @@ details.gx[open]>summary .cv{transform:rotate(90deg)}
     <button class="tab on" data-tab="edges">Edges</button>
     <button class="tab" data-tab="slate">Slate</button>
     <button class="tab" data-tab="record">Record</button>
+    <button class="tab" data-tab="ratings">Ratings</button>
   </div>
 </div>
 
@@ -375,7 +398,8 @@ const S = { tab:'edges', week:null, weeks:[], games:[], rates:{}, prior:{},
             mktFilter:new Set(Object.keys(MKT)), sort:'time',
             loading:false, pulling:false, err:null, dataErr:[], game:null, gd:null, gdErr:null,
             roster:{ loaded:false, week:null, byName:new Map(), teams:new Set() },
-            logged:new Map(), logErr:null, rec:null, recErr:null, recFilter:'all' };
+            logged:new Map(), logErr:null, rec:null, recErr:null, recFilter:'all',
+            mr:null, mrErr:null, rkSort:'pass_off', rkDir:-1 };
 
 const $ = id => document.getElementById(id);
 const R = (n,d=1) => (n===null||n===undefined||!isFinite(n)) ? null : +(+n).toFixed(d);
@@ -1171,6 +1195,7 @@ async function loadAll(){
   S.pRates = pRates; S.pPrior = pPrior; _pIndex = null;
   S.injuries = inj.injuries || [];
   setRoster(ros);
+  loadMatchup();
   jget(`/oline?season=${SEASON}&week=${S.week}`)
     .then(d => { S.oline = d.teams||{}; render(); }).catch(()=>{});
   jget(`/props/status?week=${S.week}`)
@@ -1310,6 +1335,160 @@ async function load(){
 }
 
 /* ===================================================================== */
+/* RUN/PASS MATCHUP RATINGS — display only. Built nightly from play-by-play */
+/* into data/matchup-ratings-<season>.json (scripts/matchup-ratings.mjs).   */
+/* Opponent-adjusted success rate; nothing here moves a projection or pick. */
+/* ===================================================================== */
+const MR_UNITS = [['rush_off','Run O'], ['rush_def','Run D'], ['pass_off','Pass O'], ['pass_def','Pass D']];
+const UNIT_LBL = { rush:'run', pass:'pass' };
+const ord = n => { n = Math.max(1, n); return n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th','st','nd','rd'][n % 10] || 'th'); };
+const pp = (v, d=1) => v === null || v === undefined ? '—' : (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(d);
+const pctCls = p => p >= 67 ? 'pc-hi' : p <= 33 ? 'pc-lo' : '';
+
+/* Not part of the board's health check: a missing ratings file hides the strip
+   and says why on the Ratings tab, but never marks the board unreliable. */
+function loadMatchup(){
+  dataFile(`matchup-ratings-${SEASON}.json`)
+    .then(d => { S.mr = d; S.mrErr = null; })
+    .catch(e => { S.mr = null; S.mrErr = e.message; })
+    .finally(render);
+}
+
+/** The four head-to-heads: each offense's run and pass unit against the matching defense.
+    projected = league avg + offense edge + defense edge (edges in success-rate points,
+    both from the offense's side: a defense that allows more than average adds). */
+function matchups(g){
+  if (!S.mr || !S.mr.teams) return null;
+  const out = [];
+  for (const [o, d] of [[g.away, g.home], [g.home, g.away]]) for (const unit of ['rush', 'pass']) {
+    const O = (S.mr.teams[o] || {})[unit + '_off'], D = (S.mr.teams[d] || {})[unit + '_def'];
+    const lg = S.mr.league[unit];
+    if (!O || !D || !lg) return null;
+    out.push({ off:o, def:d, unit, O, D, lg:lg.sr, lgY:lg.ypp,
+               proj: lg.sr + O.edge + D.edge, gap: (O.edge + D.edge) * 100,
+               projY: lg.ypp + O.ypp_edge + D.ypp_edge });
+  }
+  let hi = 0;
+  out.forEach((m, i) => { if (Math.abs(m.gap) > Math.abs(out[hi].gap)) hi = i; });
+  out[hi].hi = true;
+  return out;
+}
+const gapCls = v => v >= 1 ? 'up' : v <= -1 ? 'dn' : 'flat';
+const gapTxt = v => `${v >= 1 ? '▲' : v <= -1 ? '▼' : ''}${Math.abs(v).toFixed(1)}`;
+
+function matchStrip(g){
+  const ms = matchups(g);
+  if (!ms) return '';
+  return `<div class="mstrip" data-mx="${g.game_id}" title="Run/pass matchups vs league average — tap for the breakdown">${ms.map(m =>
+    `<div class="mcell ${m.hi ? 'hi' : ''}"><div class="k">${m.off} ${UNIT_LBL[m.unit]}</div>
+      <div class="v">${(m.proj*100).toFixed(0)}%<span class="d ${gapCls(m.gap)}">${gapTxt(m.gap)}</span></div></div>`).join('')}</div>`;
+}
+
+/** Biggest mismatch in words, for the game page summary line. */
+function matchSummary(g){
+  const ms = matchups(g); if (!ms) return S.mrErr ? 'unavailable' : '…';
+  const m = ms.find(x => x.hi);
+  return `biggest: ${m.off} ${UNIT_LBL[m.unit]} ${pp(m.gap)} vs avg`;
+}
+
+function matchBody(g){
+  if (S.mrErr) return `<div class="note">Ratings unavailable: ${S.mrErr}.</div>`;
+  const ms = matchups(g);
+  if (!ms) return `<div class="note"><span class="spin"></span> loading…</div>`;
+  const k = (S.mr.method && S.mr.method.shrink_games) || { pass:2, rush:3 };
+  const rows = (fmtLg, fmtO, fmtD, fmtP) => ms.map(m => `<tr class="${m.hi ? 'hi' : ''}">
+      <td style="font-family:var(--fb);font-weight:600">${m.off} ${UNIT_LBL[m.unit]}<div style="font-weight:400;font-size:10px;color:var(--t3);font-family:var(--fm)">vs ${m.def} D</div></td>
+      <td>${fmtLg(m)}</td>
+      <td class="u">${fmtO(m)}<small>${ord(m.O.pct)} · ${m.O.games}g</small></td>
+      <td class="u">${fmtD(m)}<small>${ord(m.D.pct)} · ${m.D.games}g</small></td>
+      <td class="hl">${fmtP(m)}</td></tr>`).join('');
+  const head = `<tr><th>Matchup</th><th>League</th><th>+ Offense</th><th>+ Defense</th><th>= Proj</th></tr>`;
+  const sr = rows(m => (m.lg*100).toFixed(1)+'%', m => pp(m.O.edge*100), m => pp(m.D.edge*100),
+                  m => `${(m.proj*100).toFixed(1)}% <span class="${gapCls(m.gap)}">(${pp(m.gap)})</span>`);
+  const yp = rows(m => m.lgY.toFixed(2), m => pp(m.O.ypp_edge, 2), m => pp(m.D.ypp_edge, 2),
+                  m => `${m.projY.toFixed(2)} <span class="${gapCls((m.projY - m.lgY)*4)}">(${pp(m.projY - m.lgY, 2)})</span>`);
+  return `<div class="sec"><h3>Success rate</h3><div class="rwrap" style="background:none;border:none">
+      <table class="mtbl">${head}${sr}</table></div></div>
+    <div class="sec"><h3>Yards per play</h3><div class="rwrap" style="background:none;border:none">
+      <table class="mtbl">${head}${yp}</table></div></div>
+    <div class="note">Both edges are shown from the offense's side: <b>+ helps the offense</b>. A defense that allows
+      more than average adds; a stingy one subtracts (its own rating on the Ratings tab flips the sign, so + there means stingy).
+      Under each edge: that unit's own percentile (100th = best) and games played. Pass plays include sacks and scrambles; yards per play is per dropback for passing.
+      The orange row is the biggest mismatch in either direction.</div>
+    <div class="note" style="margin-top:7px;color:var(--y)">Pulled toward league average early: each team is treated as having
+      ${k.pass} extra average games for passing and ${k.rush} for rushing, so at 3 games a rating is roughly half its raw size.
+      Unlike the main model, last season is <b>not</b> blended in. Season to date through week ${S.mr.through_week},
+      opponent-adjusted, garbage time (win probability under 10% or over 90%) removed.
+      <b>Display only</b> — these do not move any projection, probability or pick.</div>`;
+}
+
+function openMatch(id){
+  const g = S.games.find(x => x.game_id === id); if (!g) return;
+  $('dpanel').innerHTML = `<div class="dhead"><h2>${g.away} @ ${g.home} — run/pass</h2><div class="spacer"></div>
+      <button class="btn" onclick="closeDetail()">✕</button></div>${matchBody(g)}
+    <div class="sec" style="margin-top:14px"><a style="color:var(--g);cursor:pointer;font-weight:600;font-size:12.5px"
+      onclick="closeDetail();openGame('${g.game_id}')">Open game page ›</a></div>`;
+  $('detail').classList.add('open');
+}
+
+function renderRatings(){
+  if (S.mrErr) { $('main').innerHTML = `<div class="empty"><b>Ratings aren't available.</b><br><br>${S.mrErr}.<br>
+      They're built by the nightly workflow — run it from the Actions tab if this is new.</div>`; return; }
+  if (!S.mr) { $('main').innerHTML = '<div class="empty"><span class="spin"></span> loading ratings…</div>'; return; }
+  const teams = Object.entries(S.mr.teams).filter(([, v]) => MR_UNITS.every(([u]) => v[u]));
+  const key = S.rkSort, dir = S.rkDir;
+  teams.sort((a, b) => key === 'team' ? a[0].localeCompare(b[0]) * -dir
+    : ((a[1][key].pp - b[1][key].pp) * dir || a[0].localeCompare(b[0])));
+  const th = (k, l) => `<th data-rk="${k}" class="${S.rkSort === k ? 'on' : ''}">${l}${S.rkSort === k ? (k === 'team' ? '' : dir < 0 ? ' ↓' : ' ↑') : ''}</th>`;
+  const cell = u => `<td class="u"><span class="${pctCls(u.pct)}">${pp(u.pp)}</span><small>${ord(u.pct)}</small></td>`;
+  const lg = S.mr.league;
+  $('main').innerHTML = `<div class="sechead">Run/pass ratings · through week ${S.mr.through_week}
+      <span style="float:right;text-transform:none;letter-spacing:0">tap a team</span></div>
+    <div class="note" style="margin-bottom:10px">Opponent-adjusted success rate vs league average, in percentage points.
+      <b>+ is good for that unit</b> — an offense that succeeds more, a defense that allows less.
+      Small number is the percentile (100th = best). League: run ${(lg.rush.sr*100).toFixed(1)}%, pass ${(lg.pass.sr*100).toFixed(1)}%.
+      Pulled toward average early; display only.</div>
+    <div class="rwrap"><table class="rtbl rk">
+      <tr><th>#</th>${th('team','Team')}${MR_UNITS.map(([k, l]) => th(k, l)).join('')}<th>G</th></tr>
+      ${teams.map(([t, v], i) => `<tr data-team="${t}"><td>${i+1}</td><td class="nm">${t}</td>
+        ${MR_UNITS.map(([u]) => cell(v[u])).join('')}<td>${v.pass_off.games}</td></tr>`).join('')}
+    </table></div>`;
+  document.querySelectorAll('[data-rk]').forEach(el => el.onclick = () => {
+    const k = el.dataset.rk;
+    if (S.rkSort === k) S.rkDir = -S.rkDir; else { S.rkSort = k; S.rkDir = -1; }
+    render();
+  });
+  document.querySelectorAll('[data-team]').forEach(el => el.onclick = () => openTeamRatings(el.dataset.team));
+}
+
+function openTeamRatings(t){
+  const v = S.mr && S.mr.teams[t]; if (!v) return;
+  const k = (S.mr.method && S.mr.method.shrink_games) || { pass:2, rush:3 };
+  const rows = MR_UNITS.map(([u, l]) => {
+    const x = v[u], def = u.endsWith('_def'), unit = u.split('_')[0];
+    const yGood = def ? -x.ypp_edge : x.ypp_edge;
+    return `<tr><td style="font-family:var(--fb);font-weight:600">${l}</td>
+      <td class="hl"><span class="${pctCls(x.pct)}">${pp(x.pp)}</span></td><td>${ord(x.pct)}</td>
+      <td>${(x.sr*100).toFixed(1)}%</td>
+      <td>${x.ypp.toFixed(2)} <span class="${yGood >= .1 ? 'up' : yGood <= -.1 ? 'dn' : 'flat'}">(${pp(yGood, 2)})</span></td>
+      <td style="color:var(--t3)">${pp(x.raw_pp)}</td><td>${x.games}</td><td>${x.plays}</td></tr>`;
+  }).join('');
+  $('dpanel').innerHTML = `<div class="dhead"><h2>${t} — run/pass ratings</h2><div class="spacer"></div>
+      <button class="btn" onclick="closeDetail()">✕</button></div>
+    <div class="sec"><div class="rwrap" style="background:none;border:none"><table class="mtbl">
+      <tr><th>Unit</th><th>Rating</th><th>Pctl</th><th>Adj SR</th><th>Adj yds/play</th><th>Raw</th><th>G</th><th>Plays</th></tr>
+      ${rows}</table></div></div>
+    <div class="note"><b>Rating</b> is opponent-adjusted success rate vs league average in points, + good for that unit.
+      <b>Adj SR</b> and <b>adj yds/play</b> are what the unit produces (offense) or allows (defense) against an average opponent;
+      the number in brackets is vs average, + good. <b>Raw</b> is the rating before the pull toward average.
+      Pass plays include sacks and scrambles.</div>
+    <div class="note" style="margin-top:7px;color:var(--y)">Early-season ratings are pulled toward league average —
+      ${k.pass} extra average games for passing, ${k.rush} for rushing — and last season is not blended in, unlike the main model.
+      Through week ${S.mr.through_week}. Display only: these don't feed projections or picks.</div>`;
+  $('detail').classList.add('open');
+}
+
+/* ===================================================================== */
 /* RENDER                                                                 */
 /* ===================================================================== */
 function fmtKick(g){
@@ -1408,6 +1587,7 @@ function card(g){
         <div class="tm-r"><span>carries</span><span>${R(x[0].carries,0)}</span></div>
         <div class="tm-r"><span>rush yds</span><span>${R(x[0].rush_yards,0)}</span></div>
       </div>`).join('')}</div>
+    ${matchStrip(g)}
     <div class="chips" style="align-items:center">${c.map(x=>`<span class="chip ${x[0]}">${x[1]}</span>`).join('')}<span class="card-go">Game page ›</span></div>
   </div>`;
 }
@@ -1483,6 +1663,7 @@ function render(){
   if (S.game){ renderGame(); return; }
 
   if (S.tab === 'record'){ renderRecord(); return; }
+  if (S.tab === 'ratings'){ renderRatings(); return; }
 
   if (S.tab === 'slate'){
     loadGameData();                                    // snap shares decide which injuries are notable
@@ -1496,6 +1677,7 @@ function render(){
       ? `<div class="grid">${sorted.map(card).join('')}</div>`
       : '<div class="empty">No games this week.</div>';
     document.querySelectorAll('.card').forEach(el => el.onclick = () => openGame(el.dataset.id));
+    document.querySelectorAll('.mstrip').forEach(el => el.onclick = ev => { ev.stopPropagation(); openMatch(el.dataset.mx); });
     return;
   }
 
@@ -1985,6 +2167,7 @@ function renderGame(){
       <div class="note" style="margin-top:8px">Data confidence ${Math.round(conf*100)}%.${ol.length?' O-line on the report — '+ol.join(' · '):''}</div></div>
     ${weatherLine(g, p)}
     ${gx('charts', 'Matchups', 'rushing · passing · points', chartsBody(g))}
+    ${gx('mx', 'Run/pass ratings', matchSummary(g), matchBody(g))}
     ${gx('inj', 'Notable injuries', !S.gd && !S.gdErr ? '…' : injSum, injuriesBody(g, inj))}
     ${gx('props', 'Props in this game', props ? `${props} posted${nEdge?` · ${nEdge} edge${nEdge>1?'s':''}`:''}` : 'no odds', pb)}
   </div>`;
@@ -2172,6 +2355,18 @@ $('bGuide').onclick = () => showModal(`<h2>How this works</h2>
      Charts put each offense against what the opposing defense allows — faded ${PRIOR_SEASON} behind
      bright ${SEASON}, dashed league average. Tap a point for the week and opponent. None of this moves
      the projections; it's context for reading them.</p>
+
+  <h4>Run/pass ratings</h4>
+  <p>The <b>Ratings</b> tab and the four-cell strip on each slate card show opponent-adjusted
+     <b>success rate</b>: the share of plays that stay on schedule (1st down: 40% of the distance,
+     2nd: 60%, 3rd/4th: convert). Each game is judged against what that opponent usually allows or produces,
+     so a run game that looked great against a bad defense gets marked down. Garbage time (win probability
+     under 10% or over 90%), kneels, spikes and two-point tries are left out; pass plays include sacks and scrambles.</p>
+  <p>On a card, each cell is one offense against the matching defense: projected success rate =
+     league average + offense edge + defense edge, with the gap from average beside it. The orange cell is the
+     biggest mismatch. Tap the strip for the breakdown. Early on, every team is pulled toward average as if it had
+     2 extra average passing games and 3 extra rushing games — and unlike the main model, last season isn't blended in.
+     <b>Display only</b>: these don't move any projection or pick yet.</p>
 
   <h4>Badges</h4>
   <p>Silence means the data is clean.
