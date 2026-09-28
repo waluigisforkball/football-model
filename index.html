@@ -200,6 +200,13 @@ details.gx[open]>summary .cv{transform:rotate(90deg)}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13.5px;color:var(--t2);margin-bottom:9px}
 .legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
 .irow,.prow{display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid rgba(58,58,60,.5);font-size:15px}
+.uh{display:grid;grid-template-columns:78px 1fr auto;align-items:center;gap:4px 10px;margin:2px 0 10px;font-size:13.5px}
+.uh .ul{color:var(--t3);font-weight:600}
+.uh .ub{height:6px;border-radius:3px;background:var(--bg5);overflow:hidden}
+.uh .ub i{display:block;height:100%;border-radius:3px;min-width:0}
+.uh .uv{color:var(--t2);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.uh .uv.off{color:var(--t3)}
+.qbc{font-size:13.5px;line-height:1.45;margin:0 0 8px;padding:6px 9px;border-radius:8px;background:var(--rd);color:var(--t)}
 .irow:last-child,.prow:last-child{border-bottom:none}
 .prow{cursor:pointer}.prow:hover{background:var(--bg3)}
 .st{font-size:12px;font-weight:700;padding:3px 7px;border-radius:6px;letter-spacing:.4px;min-width:34px;text-align:center}
@@ -326,7 +333,7 @@ td.u small{display:block;font-size:12.5px;color:var(--t3);font-weight:400}
 
 <div class="hdr">
   <div class="hdr-top">
-    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:12px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.21</span>
+    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:12px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.22</span>
     <div class="wk"><button id="wPrev">‹</button><div class="lbl" id="wLbl">Week —</div><button id="wNext">›</button></div>
     <div class="spacer"></div>
     <button class="btn pull" id="bPull">↓ Pull odds</button>
@@ -347,6 +354,8 @@ td.u small{display:block;font-size:12.5px;color:var(--t3);font-weight:400}
   <div class="sl"><label>Min EV</label><input type="range" id="minev" min="0" max="15" value="2" step="0.5"><div class="val" id="minevV">+2.0%</div></div>
   <div class="sl"><label>Market anchor</label><input type="range" id="anchor" min="40" max="100" value="75" step="5"><div class="val" id="anchorV">75%</div></div>
   <div class="sl"><label>O-line impact</label><input type="range" id="oline" min="0" max="15" value="6" step="1"><div class="val" id="olineV">6%</div></div>
+  <div class="sl" title="Backup QB effect. 100% = the size measured on 2023-25 backup starts"><label>QB change</label><input type="range" id="qbimp" min="0" max="150" value="100" step="10"><div class="val" id="qbimpV">100%</div></div>
+  <div class="sl" title="Injured defensive starters. Off by default: the measured effect is small and noisy. 100% = the fitted size"><label>D injuries</label><input type="range" id="defimp" min="0" max="200" value="0" step="25"><div class="val" id="defimpV">off</div></div>
   <div class="sl"><label>Model trust</label><input type="range" id="trust" min="0" max="100" value="50" step="5"><div class="val" id="trustV">50%</div></div>
   <select id="lastn">
     <option value="3">Last 3</option><option value="5" selected>Last 5</option>
@@ -467,7 +476,7 @@ const COORDS={ARI:[33.528,-112.263],ATL:[33.755,-84.401],BAL:[39.278,-76.623],BU
 
 const S = { tab:'edges', week:null, weeks:[], games:[], rates:{}, prior:{},
             pRates:{}, pPrior:{}, injuries:[], oline:{}, wx:{},
-            props:[], propsMeta:null, anchor:75, minev:2, olineImp:6, lastn:5, trust:50,
+            props:[], propsMeta:null, anchor:75, minev:2, olineImp:6, qbImp:100, defImp:0, lastn:5, trust:50, sn:null,
             mktFilter:new Set(Object.keys(MKT)), sort:'time',
             loading:false, pulling:false, err:null, dataErr:[], game:null, gd:null, gdErr:null,
             roster:{ loaded:false, week:null, byName:new Map(), teams:new Set() },
@@ -639,6 +648,112 @@ function olineFactor(team){
   return { sev, mult: 1 - sev*(S.olineImp/100) };
 }
 
+/* ===================================================================== */
+/* DEEPER INJURIES (v2.22) — fitted on 2023-25 regular seasons            */
+/* (fit_injuries.py). Every number here is approximate and says so.      */
+/* ===================================================================== */
+const INJ_FIT = {
+  /* 281 games where a team's main QB didn't play, vs the same offense with him,
+     opponent-adjusted. 90% range 0.90-0.95; each season 0.95 / 0.92 / 0.91. */
+  qb_ypa:   0.926,   // team yards per attempt
+  qb_sack:  1.042,   // sack rate (uncertain, small)
+  qb_catch: 0.99,    // completion rate: the loss is depth per catch, not catches
+  qb_k:     250,     // backup's own attempts before his numbers outweigh the fit (= player YPA k)
+  /* Per missing defensive starter (sum of snap share). Measured but noise-level —
+     90% ranges -1.1% to +4.3% (secondary) and -4.6% to +8.3% (front) — so the
+     slider defaults to off. */
+  sec_ypa:  0.015,   // opponent yards per attempt
+  front_ypc:0.016,   // opponent yards per carry
+};
+const SEC_POS = /^(CB|S|FS|SS|DB)$/, FRONT_POS = /^(DE|DT|NT|DL|EDGE)$/, LB_POS = /^(LB|ILB|OLB|MLB)$/;
+let _qbc = new Map(), _dfc = new Map();
+
+/** A player's usual snap share {off, def}: the higher of this season and last (same rule
+    as the game page's "regulars"), so a starter hurt early still counts as one. */
+function snapShare(name, team){
+  if (!S.sn) return null;
+  const n = normName(name), c = S.sn.snaps.get(n + '|' + team), p = S.sn.prior.get(n);
+  if (!c && !p) return null;
+  return { off: Math.max(c ? c[1] : 0, p ? p[1] : 0), def: Math.max(c ? c[2] : 0, p ? p[2] : 0) };
+}
+
+/** Missing defensive starters (Out/Doubtful, 60%+ of defensive snaps), in starter units.
+    Secondary = CB/S; front = DL/edge; off-ball LBs split half to each. */
+function defInjuries(team){
+  if (_dfc.has(team)) return _dfc.get(team);
+  const r = { sec:0, front:0, players:[] };
+  for (const i of S.injuries) {
+    if (i.team !== team || !OUT_RE.test(i.status || '')) continue;
+    const pos = i.position || '';
+    if (!SEC_POS.test(pos) && !FRONT_POS.test(pos) && !LB_POS.test(pos)) continue;
+    const sn = snapShare(i.name, team);
+    if (!sn || sn.def < 0.6) continue;
+    const sec = SEC_POS.test(pos) ? sn.def : LB_POS.test(pos) ? sn.def/2 : 0;
+    const front = FRONT_POS.test(pos) ? sn.def : LB_POS.test(pos) ? sn.def/2 : 0;
+    r.sec += sec; r.front += front;
+    r.players.push({ name:i.name, pos, status:i.status, snap:sn.def, unit: sec && front ? 'both' : sec ? 'sec' : 'front' });
+  }
+  _dfc.set(team, r);
+  return r;
+}
+/** What a defense's injuries do to the OFFENSE facing it, at the user's setting (default off). */
+function defFactor(defTeam){
+  const d = defInjuries(defTeam), s = S.defImp/100;
+  return { ...d, on: s > 0 && (d.sec > 0 || d.front > 0),
+           ypa: 1 + d.sec*INJ_FIT.sec_ypa*s, ypc: 1 + d.front*INJ_FIT.front_ypc*s };
+}
+
+/** QB change: the team's main passer (most attempts this season; last season's if none yet)
+    is Out/Doubtful or off the active roster. The backup starts at the fitted drop and earns
+    his own number with attempts: m = w·(his YPA ÷ starter's) + (1−w)·0.926, w = att/(att+250).
+    Only the share of the season the starter actually carried is adjusted — if the backup
+    has already been playing, the team rates already contain him. */
+const NO_QBC = { on:false, ypa:1, sack:1, catch:1 };
+const sgnPct = v => (v >= 0 ? '+' : '−') + Math.abs(R(v*100, 1)) + '%';
+function qbChange(team){
+  if (_qbc.has(team)) return _qbc.get(team);
+  const qbs = (src, cur) => Object.values(src.players || {})
+    .filter(p => p.pos === 'QB' && (cur ? p.team === team : currentTeam(p.name, p) === team))
+    .map(p => ({ name:p.name, att: p.season ? tot(p.season,'att','att_pg') : 0, ypa: p.season ? p.season.ypa : null }));
+  const cur = qbs(S.pRates, true).filter(q => q.att > 0);
+  const pool = cur.length ? cur : qbs(S.pPrior, false).filter(q => q.att > 0);
+  let res = NO_QBC;
+  if (pool.length) {
+    const main = pool.reduce((a,b) => b.att > a.att ? b : a);
+    const av = availability(main.name, team);
+    if (!av.active) {
+      const teamAtt = pool.reduce((s,q) => s + q.att, 0);
+      const f = cur.length ? main.att / teamAtt : 1;               // how much of the team's passing was his
+      const career = name => {                                      // this season + last, pooled
+        let att = 0, yds = 0;
+        for (const src of [S.pRates, S.pPrior]) for (const p of Object.values(src.players || {}))
+          if (p.pos === 'QB' && normName(p.name) === normName(name) && p.season) {
+            const a = tot(p.season,'att','att_pg'); att += a; yds += a*(p.season.ypa || 0);
+          }
+        return { att, ypa: att ? yds/att : null };
+      };
+      // the backup: the QB books priced for this team, else the next-most-used active QB
+      const priced = S.props.filter(pr => pr.market === 'player_pass_yds' && normName(pr.player) !== normName(main.name))
+        .map(pr => pr.player).find(n => currentTeam(n, playerMeta(n)) === team);
+      const next = [...qbs(S.pRates, true), ...qbs(S.pPrior, false)]
+        .filter(q => normName(q.name) !== normName(main.name) && availability(q.name, team).active)
+        .sort((a,b) => b.att - a.att)[0];
+      const backup = priced || (next ? next.name : null);
+      const mc = career(main.name), bc = backup ? career(backup) : { att:0, ypa:null };
+      const w = bc.att && bc.ypa && mc.ypa ? bc.att/(bc.att + INJ_FIT.qb_k) : 0;
+      const m = clamp(w ? w*(bc.ypa/mc.ypa) + (1-w)*INJ_FIT.qb_ypa : INJ_FIT.qb_ypa, 0.75, 1.08);
+      const s = S.qbImp/100;
+      res = { on: s > 0, main:main.name, why:av.why, backup, bAtt:Math.round(bc.att), w, m, f, s,
+              ypa:  1 - (1-m)*f*s,
+              sack: 1 + (INJ_FIT.qb_sack-1)*f*s,
+              catch:1 - (1-INJ_FIT.qb_catch)*f*s };
+      if (!res.on) res = { ...res, ypa:1, sack:1, catch:1 };
+    }
+  }
+  _qbc.set(team, res);
+  return res;
+}
+
 function project(g){
   const mk = marketImplied(g), a = S.anchor/100;
   const mH = modelPoints(g.home,g.away), mA = modelPoints(g.away,g.home);
@@ -663,21 +778,21 @@ function project(g){
     const usual = (pf !== null && pa !== null) ? pf - pa : 0;
     pr = clamp(pr - (margin - usual)*SCRIPT_K, .38, .75);
 
-    const ol = olineFactor(team);
+    const ol = olineFactor(team), qc = qbChange(team), df = defFactor(opp);
     const dropbacks = plays*pr;
-    const sackRate = (teamRate(team,'offense','sack_rate') || FALLBACK.sack_rate) * (1 + ol.sev*0.25);
+    const sackRate = (teamRate(team,'offense','sack_rate') || FALLBACK.sack_rate) * (1 + ol.sev*0.25) * qc.sack;
     const att = dropbacks*(1-sackRate);
     const carries = plays - dropbacks;
     // opponent pass defense: blend own YPA with what this defense allows
     const oYpa = teamRate(team,'offense','ypa') || FALLBACK.ypa;
     const dYpa = teamRate(opp,'defense','ypa') || FALLBACK.ypa;
-    const ypa = (oYpa*0.65 + dYpa*0.35) * wf.mult * ol.mult;
+    const ypa = (oYpa*0.65 + dYpa*0.35) * wf.mult * ol.mult * qc.ypa * df.ypa;
     const oYpc = teamRate(team,'offense','ypc') || FALLBACK.ypc;
     const dYpc = teamRate(opp,'defense','ypc') || FALLBACK.ypc;
-    const ypc = oYpc*0.65 + dYpc*0.35;
+    const ypc = (oYpc*0.65 + dYpc*0.35) * df.ypc;
 
     return { team, opp, pts:myPts, plays, pass_rate:pr, dropbacks, att, carries,
-             pass_yards:att*ypa, rush_yards:carries*ypc, ypa, ypc, ol,
+             pass_yards:att*ypa, rush_yards:carries*ypc, ypa, ypc, ol, qc, df,
              adot:teamRate(team,'offense','adot'), sacks:dropbacks*sackRate };
   };
 
@@ -893,13 +1008,14 @@ function projectProp(pr, g, proj){
     used = usage('target_share');
     const tgts = side.att * ts;
     if (pr.market === 'player_receptions') {
-      const cr = playerRate(pr.player,pos,'catch_rate') || 0.65;
+      const cr = (playerRate(pr.player,pos,'catch_rate') || 0.65) * side.qc.catch;
       mean = tgts*cr; parts = { targets:tgts, catch_rate:cr, share:ts };
     } else {
       const ypt = playerRate(pr.player,pos,'ypt') || 8.0;
       // O-line pressure compresses aDOT: receivers lose, backs gain slightly
       const olAdj = pos === 'RB' ? (1 + side.ol.sev*0.06) : side.ol.mult;
-      mean = tgts*ypt*olAdj; parts = { targets:tgts, ypt, share:ts, olAdj };
+      // a backup QB shortens every target (per-catch depth), fitted with the team YPA drop
+      mean = tgts*ypt*olAdj*side.qc.ypa; parts = { targets:tgts, ypt, share:ts, olAdj };
     }
   }
   if (mean === null || !isFinite(mean) || mean <= 0) return null;
@@ -907,7 +1023,7 @@ function projectProp(pr, g, proj){
 }
 
 function buildEdges(){
-  _books = new Map();
+  _books = new Map(); _qbc = new Map(); _dfc = new Map();
   if (!S.props.length) return { priced:[], unpriced:[] };
   const byGame = new Map();
   for (const g of S.games) { byGame.set(g.away+'@'+g.home, g); }
@@ -1075,7 +1191,7 @@ function confidence(g){
 /* WHY — drivers behind a projection, split by what the model actually    */
 /* uses versus context it does not yet model.                             */
 /* ===================================================================== */
-const DEF_POS = /^(CB|S|FS|SS|DB|LB|ILB|OLB|MLB|DE|DT|NT|EDGE)$/;
+const DEF_POS = /^(CB|S|FS|SS|DB|LB|ILB|OLB|MLB|DE|DT|NT|DL|EDGE)$/;
 const SKILL_POS = /^(QB|RB|WR|TE|FB)$/;
 
 function whyFactors(e){
@@ -1146,6 +1262,40 @@ function whyFactors(e){
   if (side.ol.sev > 0)
     used.push(['down', `${side.team} O-line starters on the report — ${Math.round(side.ol.sev*100)}% severity at your ${S.olineImp}% setting`]);
 
+  // --- QB change (his team)
+  const qc = side.qc, last = n => (n || '').split(' ').slice(-1)[0];
+  if (qc.main) {
+    const who = qc.backup ? `${qc.backup} expected to start` : 'a backup starts';
+    const basis = qc.w >= 0.05 ? `blends the typical backup drop with ${last(qc.backup)}'s own ${qc.bAtt} attempts${qc.m > 1 ? `, which have been better than ${last(qc.main)}'s` : ''}`
+                               : 'the typical drop across 281 backup starts, 2023-25';
+    const share = qc.f < 0.97 ? ` ${last(qc.main)} threw ${Math.round(qc.f*100)}% of the team's passes so far, so only that part is adjusted.` : '';
+    if (qc.on) {
+      const d = sgnPct(qc.ypa - 1), mk = pr.market;
+      const what = mk === 'player_receptions' ? `catch rate ${sgnPct(qc.catch - 1)} (a backup costs depth per catch more than catches)`
+                 : mk === 'player_reception_yds' ? `yards per target ${d}`
+                 : `team passing efficiency ${d}`;
+      if (mk !== 'player_rush_yds')
+        used.push([qc.ypa > 1 ? 'up' : 'down',
+          `QB change: ${last(qc.main)} ${qc.why}, ${who} — ${what} <i>(approximate: ${basis}${qc.s !== 1 ? `, at your ${S.qbImp}% setting` : ''})</i>.${share}`]);
+    } else
+      context.push(['down', `${qc.main} is ${qc.why} and ${who} — the QB change slider is off, so the number assumes starter-level passing`]);
+  }
+
+  // --- opposing defense injuries (starters only; off unless the D injuries slider is up)
+  const df = side.df;
+  if (df.players.length) {
+    const names = df.players.map(x => `${x.pos} ${last(x.name)}`).join(', ');
+    const n = df.players.length, rush = pr.market === 'player_rush_yds';
+    const eff = rush ? df.ypc - 1 : df.ypa - 1;
+    if (df.on && eff >= 0.001)
+      used.push(['up', `${opp} missing ${n} defensive starter${n>1?'s':''} (${names}) — opponent ${rush?'yards per carry':'yards per attempt'} +${R(eff*100,1)}%
+        <i>(approximate, at your ${S.defImp}% setting; the measured effect is small and noisy)</i>`]);
+    else
+      context.push(['up', `${opp} missing ${n} defensive starter${n>1?'s':''}: ${names}${df.on
+        ? ` — ${rush ? 'all in coverage, which the model doesn\'t tie to rushing' : 'all up front, which the model doesn\'t tie to passing'}`
+        : ' — not in the number (D injuries slider is off)'}`]);
+  }
+
   /* ---- context the model does NOT currently use ---- */
   const inj = S.injuries.filter(i => /out|doubtful|questionable/i.test(i.status));
 
@@ -1163,7 +1313,8 @@ function whyFactors(e){
   if (pj.usage && pj.usage.me.returning)
     context.push(['flat', `No snaps this season yet — the market may know his workload is limited on return`]);
 
-  const dbs = inj.filter(i => i.team === opp && DEF_POS.test(i.position||''));
+  const counted = new Set(df.players.map(x => normName(x.name)));
+  const dbs = inj.filter(i => i.team === opp && DEF_POS.test(i.position||'') && !counted.has(normName(i.name)));
   for (const d of dbs.slice(0,5))
     context.push([/^(CB|S|FS|SS|DB)$/.test(d.position)?'up':'flat',
       `${opp} ${d.position} ${d.name} is ${d.status.toLowerCase()}${d.injury?' ('+d.injury+')':''}`]);
@@ -1191,8 +1342,7 @@ function whyHtml(e){
     ${w.context.length ? `<div class="sec"><h3>Not in the model — check yourself</h3>
       <div class="note" style="opacity:.92">${w.context.map(li).join('')}</div>
       <div class="note" style="margin-top:7px;color:var(--y)">These do not move the projection above.
-        Out/Doubtful teammates are already redistributed; questionable players, opposing-defense
-        injuries and coverage matchups are not, so treat these as reasons to look closer, not as part of the edge.</div></div>` : ''}`;
+        Out/Doubtful teammates are already redistributed; questionable players, coverage matchups${S.defImp ? '' : ' and opposing-defense injuries'} are not, so treat these as reasons to look closer, not as part of the edge.</div></div>` : ''}`;
 }
 
 /* ===================================================================== */
@@ -1271,14 +1421,39 @@ async function loadAll(){
   S.injuries = inj.injuries || [];
   setRoster(ros);
   loadMatchup();
+  loadSnaps();
+  /* O-line severity follows the house rule: only Out/Doubtful move projections.
+     The worker still lists questionable linemen; they stay as context. */
   jget(`/oline?season=${SEASON}&week=${S.week}`)
-    .then(d => { S.oline = d.teams||{}; render(); }).catch(()=>{});
+    .then(d => {
+      S.oline = d.teams || {};
+      for (const t of Object.values(S.oline))
+        t.severity = +Math.min(1, ((t.out||0) + (t.doubtful||0)*0.6) / 2.5).toFixed(3);
+      render();
+    }).catch(()=>{});
   jget(`/props/status?week=${S.week}`)
     .then(d => { if (d.cached) loadCachedProps(); else { S.props=[]; S.propsMeta=null; render(); } })
     .catch(()=>{});
 
   loadWeather();
   loadLogged();
+}
+
+/** Snap shares (both sides of the ball) — decide which defensive injuries are starters.
+    Optional: without them, defensive severity reads zero and says so. Loaded once. */
+let _snP = null;
+function loadSnaps(){
+  if (_snP) return _snP;
+  S.snLoading = true;
+  return _snP = dataFile(`snaps-${SEASON}.json`).then(sn => {
+    const snaps = new Map(), prior = new Map();
+    for (const [k, v] of Object.entries(sn.players || {})) {
+      const bar = k.lastIndexOf('|'); snaps.set(normName(k.slice(0, bar)) + '|' + k.slice(bar+1), v);
+    }
+    for (const [k, v] of Object.entries(sn.prior_by_name || {})) prior.set(normName(k), v);
+    S.sn = { snaps, prior };
+  }).catch(e => { S.snErr = e.message; _snP = null; })
+    .finally(() => { S.snLoading = false; render(); });
 }
 
 function setRoster(d){
@@ -1342,7 +1517,7 @@ function playOf(e){
     price:b.price, book:b.book || null, game:p.game, game_id:e.game.game_id, commence:p.commence || null,
     p:R(b.p,4), fair:R(b.fair,4), ev:R(b.ev,2), pts:R(b.pts,2), mean:R(e.pj.mean,1), w:R(e.w,3), opp:Math.round(e.opp),
     badges:e.badges.map(x => x[1]),
-    settings:{ minev:S.minev, trust:S.trust, anchor:S.anchor, oline:S.olineImp, lastn:S.lastn } };
+    settings:{ minev:S.minev, trust:S.trust, anchor:S.anchor, oline:S.olineImp, qb:S.qbImp, def:S.defImp, lastn:S.lastn } };
 }
 /** The board as it stands, across ALL markets (the chip filter is a view, not a verdict). */
 function boardEdges(){
@@ -1848,10 +2023,13 @@ function dataAgeTxt(){
 
 let _edges = null;
 function render(){
+  _qbc = new Map(); _dfc = new Map();
   $('wLbl').textContent = S.week ? 'Week '+S.week : 'Week —';
   $('minevV').textContent = (S.minev>0?'+':'')+S.minev.toFixed(1)+'%';
   $('anchorV').textContent = S.anchor+'%'; $('anchorV2').textContent = S.anchor+'%';
   $('olineV').textContent = S.olineImp+'%';
+  $('qbimpV').textContent = S.qbImp+'%';
+  $('defimpV').textContent = S.defImp ? S.defImp+'%' : 'off';
   $('trustV').textContent = S.trust+'%';
   $('anchor').value = S.anchor; $('anchor2').value = S.anchor;
   $('ctrlEdges').style.display = S.tab === 'edges' && !S.game ? '' : 'none';
@@ -2196,14 +2374,10 @@ function loadGameData(){
   if (S.gd || S.gdLoading) return;
   S.gdLoading = true;
   Promise.all([
-    dataFile(`team-weeks-${SEASON}.json`), dataFile(`team-weeks-${PRIOR_SEASON}.json`), dataFile(`snaps-${SEASON}.json`),
-  ]).then(([cur, prev, sn]) => {
-    const snaps = new Map(), prior = new Map();
-    for (const [k, v] of Object.entries(sn.players || {})) {
-      const bar = k.lastIndexOf('|'); snaps.set(normName(k.slice(0, bar)) + '|' + k.slice(bar+1), v);
-    }
-    for (const [k, v] of Object.entries(sn.prior_by_name || {})) prior.set(normName(k), v);
-    S.gd = { cur, prev, snaps, prior };
+    dataFile(`team-weeks-${SEASON}.json`), dataFile(`team-weeks-${PRIOR_SEASON}.json`), loadSnaps(),
+  ]).then(([cur, prev]) => {
+    if (!S.sn) throw new Error(S.snErr || 'snap shares not loaded');
+    S.gd = { cur, prev, snaps:S.sn.snaps, prior:S.sn.prior };
   }).catch(e => { S.gdErr = e.message; })
     .finally(() => { S.gdLoading = false; render(); });
 }
@@ -2305,7 +2479,8 @@ function notableInjuries(g){
     const bar = SKILL_POS.test(i.position || '') ? 0.4 : 0.6;
     if (S.gd && Math.max(off, def) < bar) continue;
     out.push({ ...i, tier, side: off >= def ? 'O' : 'D', snap: Math.max(off, def),
-               modeled: OUT_RE.test(i.status || '') && SKILL_POS.test(i.position || '') });
+               modeled: OUT_RE.test(i.status || '') && (SKILL_POS.test(i.position || '')
+                 || (S.defImp > 0 && def >= 0.6 && DEF_POS.test(i.position || ''))) });
   }
   return out.sort((a,b) => a.tier.k - b.tier.k || b.snap - a.snap);
 }
@@ -2315,7 +2490,8 @@ function injuriesBody(g, list){
   const team = t => {
     const xs = list.filter(i => i.team === t);
     return `<div class="gbox" style="margin:0;background:var(--bg3);border:none">
-      <div style="font-family:var(--fd);font-weight:700;margin-bottom:3px">${t}</div>
+      <div style="font-family:var(--fd);font-weight:700;margin-bottom:6px">${t}</div>
+      ${unitHealth(t)}
       ${xs.length ? xs.map(i => `<div class="irow">
           <span class="st ${i.tier.cls}" title="${i.tier.label}">${i.tier.tag}</span>
           <span style="flex:1">${i.position} ${i.name}${i.modeled?' <span class="bdg info" style="margin-left:4px">in projections</span>':''}</span>
@@ -2329,7 +2505,30 @@ function injuriesBody(g, list){
       ${gameStatusDay(g)}. Until then this is the practice report: <b>DNP</b> didn't practice,
       <b>LP</b> limited, <b>REST</b> a scheduled veteran day off.</div>` : ''}
     <div class="note" style="margin-top:7px">Regulars only: 60%+ of snaps, or 40%+ for QB/RB/WR/TE. Out/Doubtful skill players are
-      redistributed in the projections; practice reports, questionable players and defenders are context the model doesn't use.</div>`;
+      redistributed in the projections, and a starting QB out applies the backup drop. Bars count Out/Doubtful starters
+      (60%+ of snaps; linebackers split between secondary and front). Defensive injuries only move the numbers when
+      the D injuries slider is up. Practice reports and questionable players are context only.</div>`;
+}
+
+/** Severity bars per unit — how much of each group's starting lineup is Out/Doubtful — and
+    the QB change line. Red = moving the projections; grey = shown only (slider at 0). */
+function unitHealth(t){
+  const qc = qbChange(t), ol = S.oline[t], df = defInjuries(t);
+  const olN = ol ? (ol.out||0) + (ol.doubtful||0) : 0, olQ = ol ? ol.questionable||0 : 0;
+  const n = u => df.players.filter(x => x.unit === u || x.unit === 'both').length;
+  const bar = (label, frac, txt, live) => `<span class="ul">${label}</span>
+    <span class="ub"><i style="width:${Math.round(clamp(frac,0,1)*100)}%;background:${live ? 'var(--r)' : '#aeaeb2'}"></i></span>
+    <span class="uv ${live ? '' : 'off'}">${txt}</span>`;
+  const outs = (k, extra) => k ? `${k} starter${k>1?'s':''} out${extra||''}` : (extra ? extra.replace(/^ · /,'') : 'healthy');
+  const dLive = S.defImp > 0;
+  const qb = qc.main ? `<div class="qbc"><b>QB change:</b> ${qc.main} ${qc.why}${qc.backup ? ` → ${qc.backup}` : ''}.
+      ${qc.on ? `Passing efficiency ${sgnPct(qc.ypa - 1)} in the model <span style="color:var(--t3)">(approximate)</span>.`
+              : '<span style="color:var(--t3)">QB change slider is off — not in the model.</span>'}</div>` : '';
+  return `${qb}<div class="uh">
+    ${bar('O-line', ol ? ol.severity : 0, outs(olN, olQ ? ` · ${olQ} Q` : ''), S.olineImp > 0 && olN > 0)}
+    ${bar('Secondary', df.sec/3, outs(n('sec')), dLive && df.sec > 0)}
+    ${bar('Front', df.front/3, outs(n('front')), dLive && df.front > 0)}
+  </div>${df.players.length && !dLive ? `<div class="note" style="margin:-4px 0 8px;font-size:13px">Grey = shown only. The D injuries slider is off, so these don't move the numbers.</div>` : ''}`;
 }
 
 /** When a game's final injury statuses are published: two days before kickoff. */
@@ -2472,6 +2671,8 @@ $('minev').oninput = e => { S.minev = +e.target.value; render(); };
 $('anchor').oninput = e => { S.anchor = +e.target.value; render(); };
 $('anchor2').oninput = e => { S.anchor = +e.target.value; render(); };
 $('oline').oninput = e => { S.olineImp = +e.target.value; render(); };
+$('qbimp').oninput = e => { S.qbImp = +e.target.value; render(); };
+$('defimp').oninput = e => { S.defImp = +e.target.value; render(); };
 $('trust').oninput = e => { S.trust = +e.target.value; render(); };
 $('lastn').onchange = e => { S.lastn = +e.target.value; load(); };
 $('sort').onchange = e => { S.sort = e.target.value; render(); };
