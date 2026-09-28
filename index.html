@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#000000">
 <title>NFL Slate</title>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#000;--bg2:#1c1c1e;--bg3:#2c2c2e;--bg4:#3a3a3c;--bg5:#48484a;
@@ -20,117 +20,120 @@
   --pu:#bf5af2;--pud:rgba(191,90,242,.15);
   --fd:-apple-system,BlinkMacSystemFont,'SF Pro Display','Helvetica Neue',sans-serif;
   --fb:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',sans-serif;
-  --fm:'IBM Plex Mono','SF Mono',monospace;
-  --r1:8px;--r2:12px;--r3:16px;
+  --fm:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',sans-serif;
+  --fc:'Barlow Condensed','SF Pro Display',-apple-system,sans-serif;
+  --r1:10px;--r2:16px;--r3:20px;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{margin:0;background:var(--bg);color:var(--t);font-family:var(--fb);font-size:14px;
+body{margin:0;background:var(--bg);color:var(--t);font-family:var(--fb);font-size:16px;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;
      padding-bottom:env(safe-area-inset-bottom)}
 button,select,input{font-family:var(--fb);color:var(--t)}
 
 .hdr{position:sticky;top:0;z-index:60;background:rgba(0,0,0,.86);
      backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);
-     border-bottom:2px solid var(--g);padding:10px 14px 0}
+     border-bottom:2px solid var(--g);padding:12px 20px 0}
 .hdr-top{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
-.logo{font-family:var(--fd);font-size:21px;font-weight:800;letter-spacing:-.5px;color:var(--g)}
+.logo{font-family:var(--fd);font-size:24px;font-weight:800;letter-spacing:-.5px;color:var(--g)}
 .logo span{color:var(--t);font-weight:300}
 .spacer{flex:1}
 .btn{background:var(--bg3);border:1px solid var(--b1);border-radius:var(--r1);
-     padding:6px 11px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+     padding:8px 14px;min-height:38px;font-size:15px;font-weight:600;cursor:pointer;white-space:nowrap}
 .btn:hover{background:var(--bg4)}
 .btn.on{background:var(--gd);border-color:var(--g);color:var(--g)}
 .btn.pull{background:var(--gd);border-color:var(--g);color:var(--g)}
 .btn:disabled{opacity:.45;cursor:default}
 .wk{display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--b1);
     border-radius:var(--r1);padding:3px 4px}
-.wk button{background:none;border:none;font-size:15px;padding:2px 8px;cursor:pointer;color:var(--t2);border-radius:6px}
+.wk button{background:none;border:none;font-size:19px;padding:4px 10px;min-height:34px;cursor:pointer;color:var(--t2);border-radius:6px}
 .wk button:hover{background:var(--bg4);color:var(--t)}
-.wk .lbl{font-family:var(--fm);font-size:12px;font-weight:600;min-width:62px;text-align:center}
+.wk .lbl{font-family:var(--fc);font-size:19px;font-weight:700;letter-spacing:.3px;min-width:72px;text-align:center}
 
 .tabs{display:flex;gap:2px;margin-top:9px}
-.tab{background:none;border:none;border-bottom:2px solid transparent;padding:8px 14px;
-     font-size:13px;font-weight:600;color:var(--t3);cursor:pointer}
-.tab.on{color:var(--g);border-bottom-color:var(--g)}
+.tab{background:none;border:none;border-bottom:2px solid transparent;padding:11px 16px;
+     font-size:16px;font-weight:600;color:var(--t3);cursor:pointer}
+.tab:hover{color:var(--t2)}
+.tab.on{color:var(--g);border-bottom-color:var(--g);border-bottom-width:3px}
 
-.ctrl{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:9px 14px;
+.ctrl{display:flex;align-items:center;gap:16px 20px;flex-wrap:wrap;padding:12px 20px;
       border-bottom:1px solid var(--b1);background:var(--bg2)}
 .sl{display:flex;align-items:center;gap:8px;min-width:190px}
-.sl label{font-size:10px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;white-space:nowrap}
+.sl label{font-size:12.5px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;white-space:nowrap}
 input[type=range]{-webkit-appearance:none;flex:1;height:3px;border-radius:2px;background:var(--bg4);outline:none;min-width:70px}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;
      background:var(--g);cursor:pointer;border:2px solid #000}
-.sl .val{font-family:var(--fm);font-size:12px;color:var(--g);min-width:38px;text-align:right}
-select{background:var(--bg3);border:1px solid var(--b1);border-radius:var(--r1);padding:5px 8px;font-size:12px;font-weight:600}
+.sl .val{font-family:var(--fm);font-size:14px;color:var(--g);min-width:38px;text-align:right}
+select{background:var(--bg3);border:1px solid var(--b1);border-radius:var(--r1);padding:8px 10px;min-height:38px;font-size:15px;font-weight:600}
 .fchips{display:flex;gap:5px;flex-wrap:wrap}
-.fchip{background:var(--bg3);border:1px solid var(--b1);border-radius:6px;padding:4px 9px;
-       font-size:11px;font-weight:600;color:var(--t3);cursor:pointer}
+.fchip{background:var(--bg3);border:1px solid var(--b1);border-radius:999px;padding:7px 13px;
+       font-size:14px;font-weight:600;color:var(--t3);cursor:pointer}
 .fchip.on{background:var(--gd);border-color:var(--g);color:var(--g)}
 
-.status{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:7px 14px;
-        font-size:11px;color:var(--t3);border-bottom:1px solid var(--b1)}
+.status{display:flex;align-items:center;gap:6px 16px;flex-wrap:wrap;padding:9px 20px;
+        font-size:13.5px;color:var(--t3);border-bottom:1px solid var(--b1)}
 .conf-bar{display:inline-block;width:60px;height:4px;border-radius:2px;background:var(--bg4);overflow:hidden;vertical-align:middle}
 .conf-fill{display:block;height:100%;background:var(--g);border-radius:2px}
 .stale{color:var(--y)}
 
-.main{padding:12px 14px 50px;max-width:1400px;margin:0 auto}
+.main{padding:18px 20px 60px;max-width:1240px;margin:0 auto}
+@media(max-width:600px){.main{padding:14px 14px 50px}.hdr{padding:10px 14px 0}.ctrl,.status{padding-left:14px;padding-right:14px}.tab{padding:10px 11px}}
 
 /* ---------- edge rows ---------- */
 .erow{display:flex;align-items:center;gap:12px;background:var(--bg2);border:1px solid var(--b1);
-      border-left:3px solid var(--b2);border-radius:var(--r2);padding:10px 12px;margin-bottom:7px;cursor:pointer}
+      border-left:3px solid var(--b2);border-radius:var(--r2);padding:14px 16px;margin-bottom:9px;cursor:pointer}
 .erow:hover{border-color:var(--g)}
 .erow.over{border-left-color:var(--gr)}
 .erow.under{border-left-color:var(--r)}
 .e-main{flex:1;min-width:0}
 .e-top{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
-.e-name{font-family:var(--fd);font-size:15px;font-weight:700;letter-spacing:-.2px}
-.e-mkt{font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px}
-.e-dir{font-family:var(--fm);font-size:12px;font-weight:600;padding:1px 7px;border-radius:5px}
+.e-name{font-family:var(--fd);font-size:18px;font-weight:700;letter-spacing:-.2px}
+.e-mkt{font-size:13.5px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px}
+.e-dir{font-family:var(--fm);font-size:14px;font-weight:600;padding:1px 7px;border-radius:5px}
 .e-dir.over{background:var(--grd);color:var(--gr)}
 .e-dir.under{background:var(--rd);color:var(--r)}
-.e-sub{font-family:var(--fm);font-size:11px;color:var(--t2);margin-top:3px}
+.e-sub{font-family:var(--fm);font-size:14px;color:var(--t2);margin-top:5px;line-height:1.5}
 .e-sub b{color:var(--t)}
 .e-num{text-align:right;flex-shrink:0}
-.e-ev{font-family:var(--fm);font-size:19px;font-weight:600;line-height:1}
-.e-pts{font-family:var(--fm);font-size:10.5px;color:var(--t3);margin-top:3px}
+.e-ev{font-family:var(--fc);font-size:28px;font-weight:600;line-height:1}
+.e-pts{font-family:var(--fm);font-size:13px;color:var(--t3);margin-top:3px}
 .glink{color:var(--g);cursor:pointer;border-bottom:1px dotted var(--g)}
 .glink:hover{color:var(--t)}
-.card-go{margin-left:auto;font-size:10.5px;font-weight:600;color:var(--g);white-space:nowrap}
+.card-go{margin-left:auto;font-size:13px;font-weight:600;color:var(--g);white-space:nowrap}
 .bdgs{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}
-.bdg{font-size:9px;font-weight:700;padding:2px 6px;border-radius:5px;background:var(--bg4);
+.bdg{font-size:12px;font-weight:700;padding:3px 8px;border-radius:6px;background:var(--bg4);
      color:var(--t2);letter-spacing:.4px;text-transform:uppercase}
 .bdg.warn{background:var(--yd);color:var(--y)}
 .bdg.bad{background:var(--rd);color:var(--r)}
 .bdg.info{background:var(--bld);color:var(--bl)}
 
-.sechead{font-size:10px;text-transform:uppercase;letter-spacing:.9px;color:var(--t3);
+.sechead{font-size:13px;text-transform:uppercase;letter-spacing:.9px;color:var(--t3);
          font-weight:700;margin:20px 0 9px}
-.empty{text-align:center;padding:48px 20px;color:var(--t3);font-size:13px;line-height:1.7}
+.empty{text-align:center;padding:48px 20px;color:var(--t3);font-size:15px;line-height:1.7}
 .empty b{color:var(--t2)}
 
 /* ---------- slate cards ---------- */
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:11px}
-.card{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r2);padding:12px 13px;cursor:pointer}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,360px),1fr));gap:14px}
+.card{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r2);padding:16px;cursor:pointer}
 .card:hover{border-color:var(--g)}
-.c-top{display:flex;align-items:flex-start;gap:10px;margin-bottom:9px}
-.matchup{font-family:var(--fd);font-size:16px;font-weight:700;letter-spacing:-.2px;line-height:1.25}
+.c-top{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px}
+.matchup{font-family:var(--fc);font-size:30px;font-weight:700;letter-spacing:.2px;line-height:1;display:flex;align-items:center;gap:6px}
 .matchup .at{color:var(--t3);font-weight:400;margin:0 3px}
-.kick{font-size:10.5px;color:var(--t3);margin-top:2px;font-family:var(--fm)}
+.kick{font-size:14px;color:var(--t2);margin-top:5px;font-family:var(--fm)}
 .comp{margin-left:auto;text-align:right}
-.comp-v{font-family:var(--fm);font-size:20px;font-weight:600;line-height:1}
-.comp-l{font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;margin-top:3px}
-.lines{display:flex;gap:7px;margin-bottom:9px}
-.line{flex:1;background:var(--bg3);border-radius:var(--r1);padding:6px 8px;text-align:center}
-.line .k{font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px}
-.line .v{font-family:var(--fm);font-size:13px;font-weight:600;margin-top:2px}
-.teams{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:9px}
-.tm{background:var(--bg3);border-radius:var(--r1);padding:7px 9px;border-left:2px solid var(--b2)}
+.comp-v{font-family:var(--fc);font-size:32px;font-weight:600;line-height:1}
+.comp-l{font-size:12px;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;margin-top:3px}
+.lines{display:flex;gap:8px;margin-bottom:10px}
+.line{flex:1;background:var(--bg3);border-radius:var(--r1);padding:8px;text-align:center}
+.line .k{font-size:12px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px}
+.line .v{font-family:var(--fc);font-size:21px;font-weight:700;margin-top:1px;letter-spacing:.2px}
+.teams{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.tm{background:var(--bg3);border-radius:var(--r1);padding:10px 12px;border-left:2px solid var(--b2)}
 .tm.hot{border-left-color:var(--g)}
-.tm-n{font-family:var(--fd);font-size:12px;font-weight:700;margin-bottom:4px;display:flex;justify-content:space-between;align-items:baseline}
-.tm-n .pts{font-family:var(--fm);font-size:12px;color:var(--g);font-weight:600}
-.tm-r{display:flex;justify-content:space-between;font-size:10.5px;color:var(--t2);font-family:var(--fm);line-height:1.6}
+.tm-n{font-family:var(--fc);font-size:22px;font-weight:700;letter-spacing:.2px;margin-bottom:5px;display:flex;justify-content:space-between;align-items:baseline}
+.tm-n .pts{font-family:var(--fc);font-size:24px;color:var(--g);font-weight:700}
+.tm-r{display:flex;justify-content:space-between;font-size:14px;color:var(--t2);font-family:var(--fm);line-height:1.7}
 .tm-r span:first-child{color:var(--t3)}
-.chips{display:flex;gap:5px;flex-wrap:wrap}
-.chip{font-size:9.5px;font-weight:600;padding:2.5px 7px;border-radius:6px;background:var(--bg4);
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:12px;font-weight:600;padding:4px 9px;border-radius:999px;background:var(--bg4);
       color:var(--t2);text-transform:uppercase;letter-spacing:.4px}
 .chip.w{background:var(--bld);color:var(--bl)}
 .chip.d{background:var(--yd);color:var(--y)}
@@ -143,63 +146,63 @@ select{background:var(--bg3);border:1px solid var(--b1);border-radius:var(--r1);
         display:none;align-items:flex-end;justify-content:center}
 .detail.open{display:flex}
 .dpanel{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r3) var(--r3) 0 0;
-        width:100%;max-width:760px;max-height:92vh;overflow-y:auto;padding:16px 16px 44px}
+        width:100%;max-width:860px;max-height:92vh;overflow-y:auto;padding:20px 20px 48px}
 @media(min-width:720px){.detail{align-items:center}.dpanel{border-radius:var(--r3);max-height:86vh}}
-.dhead{display:flex;align-items:center;gap:10px;margin-bottom:14px;position:sticky;top:-16px;
+.dhead{display:flex;align-items:center;gap:10px;margin-bottom:16px;position:sticky;top:-20px;
        background:var(--bg2);padding:4px 0 10px;border-bottom:1px solid var(--b1)}
-.dhead h2{font-family:var(--fd);font-size:18px;margin:0;font-weight:700;letter-spacing:-.3px}
-.sec{margin-bottom:16px}
-.sec h3{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--t3);margin:0 0 8px;font-weight:700}
-table{width:100%;border-collapse:collapse;font-family:var(--fm);font-size:11.5px}
-th{text-align:right;font-weight:600;color:var(--t3);padding:5px 6px;border-bottom:1px solid var(--b1);font-size:10px}
+.dhead h2{font-family:var(--fd);font-size:22px;margin:0;font-weight:700;letter-spacing:-.3px}
+.sec{margin-bottom:20px}
+.sec h3{font-size:12.5px;text-transform:uppercase;letter-spacing:.8px;color:var(--t3);margin:0 0 8px;font-weight:700}
+table{width:100%;border-collapse:collapse;font-family:var(--fm);font-size:14px}
+th{text-align:right;font-weight:600;color:var(--t3);padding:7px 8px;border-bottom:1px solid var(--b1);font-size:12.5px}
 th:first-child,td:first-child{text-align:left}
-td{padding:5px 6px;border-bottom:1px solid rgba(58,58,60,.5);color:var(--t2);text-align:right}
+td{padding:8px;border-bottom:1px solid rgba(58,58,60,.5);color:var(--t2);text-align:right}
 td.hl{color:var(--g);font-weight:600}
-.note{font-size:11.5px;color:var(--t3);line-height:1.6;font-family:var(--fb)}
+.note{font-size:15px;color:var(--t2);line-height:1.6;font-family:var(--fb)}
 .warn{background:var(--rd);border:1px solid var(--r);border-radius:var(--r1);padding:9px 11px;
-      font-size:11.5px;color:var(--t2);line-height:1.5}
+      font-size:14px;color:var(--t2);line-height:1.5}
 .warn b{color:var(--r)}
 .modal{position:fixed;inset:0;z-index:95;background:rgba(0,0,0,.72);backdrop-filter:blur(8px);
        display:none;align-items:center;justify-content:center;padding:16px}
 .modal.open{display:flex}
 .mpanel{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r3);
-        max-width:620px;width:100%;max-height:84vh;overflow-y:auto;padding:18px}
-.mpanel h2{font-family:var(--fd);font-size:18px;margin:0 0 4px}
-.mpanel h4{font-size:12px;margin:15px 0 5px;color:var(--g);letter-spacing:.3px}
-.mpanel p,.mpanel li{font-size:12.5px;color:var(--t2);line-height:1.6;margin:5px 0}
-.mpanel code{font-family:var(--fm);font-size:11px;background:var(--bg3);padding:1px 5px;border-radius:4px;color:var(--g)}
+        max-width:680px;width:100%;max-height:86vh;overflow-y:auto;padding:22px}
+.mpanel h2{font-family:var(--fd);font-size:24px;margin:0 0 4px}
+.mpanel h4{font-size:16px;margin:20px 0 6px;color:var(--g);letter-spacing:.3px}
+.mpanel p,.mpanel li{font-size:15px;color:var(--t2);line-height:1.6;margin:5px 0}
+.mpanel code{font-family:var(--fm);font-size:13.5px;background:var(--bg3);padding:1px 5px;border-radius:4px;color:var(--g)}
 .inp{width:100%;background:var(--bg3);border:1px solid var(--b1);border-radius:var(--r1);
-     padding:8px 10px;font-family:var(--fm);font-size:12px;margin-top:6px}
+     padding:8px 10px;font-family:var(--fm);font-size:14px;margin-top:6px}
 textarea.inp{height:300px;resize:vertical;line-height:1.55}
-.gpage{max-width:920px;margin:0 auto}
-.gback{background:none;border:none;color:var(--g);font-size:14px;font-weight:600;cursor:pointer;padding:4px 0;margin-bottom:8px}
+.gpage{max-width:980px;margin:0 auto}
+.gback{background:none;border:none;color:var(--g);font-size:16px;font-weight:600;cursor:pointer;padding:4px 0;margin-bottom:8px}
 .ghead{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:12px}
-.ghead h1{font-family:var(--fd);font-size:28px;font-weight:800;letter-spacing:-.6px;margin:0}
+.ghead h1{font-family:var(--fc);font-size:46px;font-weight:700;letter-spacing:.2px;margin:0;line-height:1}
 .ghead h1 .at{color:var(--t3);font-weight:400;margin:0 4px}
-.gsub{font-family:var(--fm);font-size:12px;color:var(--t2);margin-top:3px}
-.gbox{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r2);padding:12px 13px;margin-bottom:10px}
-.wxline{display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-family:var(--fm);font-size:12.5px}
+.gsub{font-family:var(--fm);font-size:14px;color:var(--t2);margin-top:3px}
+.gbox{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r2);padding:16px;margin-bottom:12px}
+.wxline{display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-family:var(--fm);font-size:15px}
 .wxline.hit{border-color:var(--bl)}
-details.gx{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r2);margin-bottom:10px}
-details.gx>summary{list-style:none;cursor:pointer;padding:12px 13px;display:flex;align-items:center;gap:8px;
-  font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--t2)}
+details.gx{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r2);margin-bottom:12px}
+details.gx>summary{list-style:none;cursor:pointer;padding:16px;min-height:52px;display:flex;align-items:center;gap:8px;
+  font-size:13.5px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--t2)}
 details.gx>summary::-webkit-details-marker{display:none}
-details.gx>summary .sm{text-transform:none;letter-spacing:0;font-weight:500;color:var(--t3);font-size:12px}
+details.gx>summary .sm{text-transform:none;letter-spacing:0;font-weight:500;color:var(--t3);font-size:14px}
 details.gx>summary .cv{margin-left:auto;color:var(--t3);transition:transform .15s}
 details.gx[open]>summary .cv{transform:rotate(90deg)}
-.gxb{padding:0 13px 13px}
+.gxb{padding:0 16px 16px}
 .mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:10px}
-.mc{background:var(--bg3);border-radius:var(--r1);padding:9px 10px 7px}
-.mc-h{display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px}
-.mc-f{display:flex;justify-content:space-between;font-family:var(--fm);font-size:10.5px;color:var(--t2);margin-top:2px}
-.mc-r{font-family:var(--fm);font-size:10.5px;color:var(--t3);min-height:14px;margin-top:2px}
+.mc{background:var(--bg3);border-radius:var(--r1);padding:12px 12px 9px}
+.mc-h{display:flex;justify-content:space-between;font-size:14px;margin-bottom:3px}
+.mc-f{display:flex;justify-content:space-between;font-family:var(--fm);font-size:13px;color:var(--t2);margin-top:2px}
+.mc-r{font-family:var(--fm);font-size:13px;color:var(--t3);min-height:14px;margin-top:2px}
 .mc svg circle{cursor:pointer}
-.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--t2);margin-bottom:9px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13.5px;color:var(--t2);margin-bottom:9px}
 .legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
-.irow,.prow{display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid rgba(58,58,60,.5);font-size:12.5px}
+.irow,.prow{display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid rgba(58,58,60,.5);font-size:15px}
 .irow:last-child,.prow:last-child{border-bottom:none}
 .prow{cursor:pointer}.prow:hover{background:var(--bg3)}
-.st{font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:5px;letter-spacing:.4px;min-width:26px;text-align:center}
+.st{font-size:12px;font-weight:700;padding:3px 7px;border-radius:6px;letter-spacing:.4px;min-width:34px;text-align:center}
 .st.out{background:var(--rd);color:var(--r)}.st.q{background:var(--yd);color:var(--y)}
 .st.dnp{background:rgba(255,159,10,.14);color:var(--g)}.st.lp{background:var(--bg2);color:var(--t2);border:1px solid var(--b1)}
 .st.rest{background:var(--bg2);color:var(--t3);border:1px solid var(--b1)}
@@ -208,52 +211,122 @@ details.gx[open]>summary .cv{transform:rotate(90deg)}
 @keyframes s{to{transform:rotate(360deg)}}
 
 /* ---------- record ---------- */
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px}
-.tile{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r2);padding:11px 12px}
-.tile .tl{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--t3)}
-.tile .tv{font-family:var(--fm);font-size:21px;font-weight:600;margin-top:5px;line-height:1.1}
-.tile .ts{font-family:var(--fm);font-size:10.5px;color:var(--t2);margin-top:4px}
-.rtbl{width:100%;border-collapse:collapse;font-family:var(--fm);font-size:11.5px}
-.rtbl th{font-family:var(--fb);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;
-         color:var(--t3);text-align:right;padding:6px 8px;border-bottom:1px solid var(--b1)}
-.rtbl td{text-align:right;padding:7px 8px;border-bottom:1px solid var(--bg3);white-space:nowrap}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.tile{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r2);padding:14px 16px}
+.tile .tl{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--t3)}
+.tile .tv{font-family:var(--fc);font-size:34px;font-weight:700;margin-top:6px;line-height:1}
+.tile .ts{font-family:var(--fm);font-size:13px;color:var(--t2);margin-top:4px}
+.rtbl{width:100%;border-collapse:collapse;font-family:var(--fm);font-size:14px}
+.rtbl th{font-family:var(--fb);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;
+         color:var(--t3);text-align:right;padding:10px 10px;border-bottom:1px solid var(--b1)}
+.rtbl td{text-align:right;padding:10px;border-bottom:1px solid var(--bg3);white-space:nowrap}
 .rtbl th:first-child,.rtbl td:first-child{text-align:left}
 .rtbl td.nm{font-family:var(--fb);font-weight:600;white-space:normal}
 .rwrap{background:var(--bg2);border:1px solid var(--b1);border-radius:var(--r2);overflow-x:auto}
-.res{font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:5px;letter-spacing:.4px;text-transform:uppercase}
+.res{font-size:12px;font-weight:700;padding:3px 8px;border-radius:6px;letter-spacing:.4px;text-transform:uppercase}
 .res.win{background:var(--grd);color:var(--gr)}.res.loss{background:var(--rd);color:var(--r)}
 .res.push,.res.void{background:var(--bg4);color:var(--t2)}.res.pending{background:var(--bg3);color:var(--t3)}
 .betbtn.on{background:var(--gd);border-color:var(--g);color:var(--g)}
 .star{color:var(--g)}
 
-/* ---------- run/pass matchup ratings ---------- */
-.mstrip{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:9px;border-radius:var(--r1)}
-.mstrip:hover .mcell{background:var(--bg4)}
-.mcell{background:var(--bg3);border:1px solid transparent;border-radius:var(--r1);padding:5px 6px;min-width:0}
-.mcell.hi{border-color:var(--g);background:var(--gd)}
-.mcell .k{font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mcell .v{font-family:var(--fm);font-size:13px;font-weight:600;margin-top:1px;display:flex;align-items:baseline;gap:4px;flex-wrap:wrap}
-.mcell .d{font-size:10px;font-weight:600}
+/* ---------- team ratings ---------- */
 .up{color:var(--gr)}.dn{color:var(--r)}.flat{color:var(--t3)}
+.tb{position:relative;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:50%;
+    background:rgba(242,242,247,.94);overflow:hidden;vertical-align:middle}
+.tb img{width:82%;height:82%;object-fit:contain}
+.tb b{display:none;font-family:var(--fc);font-weight:700;color:#fff;letter-spacing:.2px;text-shadow:0 1px 1px rgba(0,0,0,.35)}
+.tb.noimg{background:var(--tc);box-shadow:inset 0 0 0 2px var(--tc2)}
+.tb.noimg b{display:block}
+/* card matchup tiles */
+.mstrip{margin-bottom:12px;cursor:pointer;border-radius:var(--r1)}
+.mhead{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--t3)}
+.mkey{margin-left:auto;display:flex;align-items:center;gap:5px;text-transform:none;letter-spacing:0;font-weight:500;font-size:12px}
+.mkey i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-left:6px}
+.mgrid2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.mcell{border:1.5px solid transparent;border-radius:var(--r1);padding:8px 10px;min-width:0}
+.mstrip:hover .mcell{filter:brightness(1.12)}
+.mcell.hi{border-color:#f5f5f7}
+.mcell .k{display:flex;align-items:baseline;justify-content:space-between;gap:6px;min-width:0;white-space:nowrap}
+.mcell .k b{font-family:var(--fc);font-size:18px;font-weight:700;letter-spacing:.2px}
+.mcell .r{font-size:12.5px;color:rgba(245,245,247,.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.mcell .big{font-family:var(--fc);font-size:30px;font-weight:700;line-height:1;margin-top:2px}
+.mcell .d{font-size:13px;font-weight:700}
 .mtbl td.hi{color:var(--g);font-weight:600}
 .mtbl tr.hi td{background:var(--gd)}
-.rk th{cursor:pointer;user-select:none}
-.rk th.on{color:var(--g)}
-.rk td.u{line-height:1.25}
-.mtbl td,.rk td{vertical-align:middle}
-td.u small{display:block;font-size:9.5px;color:var(--t3);font-weight:400}
-.rk td.nm{text-align:left}
-.rk tr[data-team]{cursor:pointer}
-.mtbl td:first-child,.rk td:first-child{white-space:nowrap}
-.rk tr[data-team]:hover td{background:var(--bg3)}
-.pc-hi{color:var(--gr)}.pc-lo{color:var(--r)}
+.mtbl td,.mtbl th{vertical-align:middle}
+.mtbl td:first-child{white-space:nowrap}
+td.u small{display:block;font-size:12.5px;color:var(--t3);font-weight:400}
+/* tab header */
+.rkpage{max-width:1120px;margin:0 auto}
+.rkhead{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin:6px 0 18px}
+.rkt{font-family:var(--fc);font-size:46px;font-weight:700;letter-spacing:.3px;margin:0;line-height:1}
+.rks{font-size:16px;color:var(--t2);margin-top:6px}
+.seg{display:inline-flex;background:var(--bg2);border:1px solid var(--b1);border-radius:999px;padding:3px}
+.seg button{background:none;border:none;border-radius:999px;padding:8px 16px;min-height:36px;font-size:15px;font-weight:600;color:var(--t2);cursor:pointer}
+.seg button.on{background:var(--g);color:#000}
+.rkh{background:none;border:none;padding:4px 0;font:inherit;color:inherit;cursor:pointer;text-transform:inherit;letter-spacing:inherit;text-align:inherit}
+.rkh.on{color:var(--g)}
+/* grid view */
+.hkey{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--t2);margin-bottom:12px}
+.hkey i{display:inline-block;width:160px;height:10px;border-radius:5px;background:linear-gradient(90deg,rgba(255,159,10,.9),var(--bg3) 50%,rgba(10,132,255,.8))}
+.hkey em{font-style:normal;color:var(--t3);margin-left:auto}
+.hg{display:grid;grid-template-columns:36px 120px repeat(4,minmax(0,1fr)) 110px;gap:7px;align-items:center}
+.hg-h{font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--t3);padding:0 4px 8px}
+.hg-h .sm{display:none}
+.hg-r{padding:0 4px;margin-bottom:6px;border-radius:var(--r1);cursor:pointer}
+.hg-r:hover .hc,.hg-r:focus-visible .hc{filter:brightness(1.15)}
+.hg-r:focus-visible{outline:2px solid var(--g);outline-offset:2px}
+.hn{font-family:var(--fc);font-size:20px;font-weight:600;color:var(--t3)}
+.ht{display:flex;align-items:center;gap:9px;font-family:var(--fc);font-size:26px;font-weight:700;letter-spacing:.3px}
+.hc{height:44px;border-radius:10px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border:1.5px solid transparent}
+.hc b{font-family:var(--fc);font-size:24px;font-weight:700}
+.hc span{font-size:13.5px;font-weight:600;color:rgba(245,245,247,.82)}
+.hc.ov{background:var(--bg2)}
+@media(max-width:700px){
+  .hg{grid-template-columns:22px 62px repeat(4,minmax(0,1fr)) 48px;gap:4px}
+  .hg-h .lg{display:none}.hg-h .sm{display:inline}.hg-h{font-size:11px;letter-spacing:0}.hg-h .rkh{white-space:nowrap}
+  .ht .ab{display:none}.hn{font-size:16px}
+  .hc{height:40px;padding:0;justify-content:center}.hc span{display:none}.hc b{font-size:19px}
+  .hkey em{margin-left:0}.rkt{font-size:38px}
+}
+/* table view */
+.rk2 th{vertical-align:bottom}
+.rk2 th.grp{text-align:center;border-bottom:1px solid var(--b2)}
+.rk2 tr.sub th{padding-top:6px}
+.rk2 tr[data-team]{cursor:pointer}
+.rk2 tr[data-team]:hover td{background:var(--bg3)}
+.rk2 td.n{color:var(--t3)}
+.rk2 td.nm .ht{font-size:22px}
+.tc{display:flex;align-items:center;justify-content:flex-end;gap:10px}
+.tc b{font-size:16px;min-width:46px;text-align:right}
+.tc small{font-size:12.5px;color:var(--t3);min-width:34px;text-align:right}
+.tbar{width:48px;height:5px;border-radius:3px;background:var(--bg4);overflow:hidden}
+.tbar i{display:block;height:5px;border-radius:3px}
+/* cards view */
+.gkey{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--bg2);border-radius:var(--r2);padding:12px 14px;margin-bottom:14px;font-size:13.5px;color:var(--t2)}
+.gkey span{display:inline-flex;align-items:center;gap:6px;background:var(--bg3);border-radius:999px;padding:4px 10px 4px 5px}
+.gkey b{color:#000;border-radius:999px;padding:2px 9px;font-size:12.5px;font-weight:800}
+.gkey em{font-style:normal;color:var(--t3);flex-basis:100%}
+.scgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr));gap:14px}
+.sc{background:var(--bg2);border:1px solid var(--b1);border-radius:20px;padding:16px;display:flex;flex-direction:column;gap:9px;cursor:pointer}
+.sc:hover,.sc:focus-visible{border-color:var(--g);outline:none}
+.sch{display:flex;align-items:center;gap:10px}
+.scn{font-family:var(--fc);font-size:28px;font-weight:700;line-height:1}
+.sco{font-size:13px;color:var(--t3);font-weight:600;margin-top:2px}
+.scb{font-size:14.5px;font-weight:600;color:var(--t);min-height:20px}
+.scr{display:grid;grid-template-columns:56px minmax(0,1fr) 54px;gap:8px;align-items:center}
+.scr span{font-size:13px;font-weight:700;color:var(--t2)}
+.scr b{font-size:12px;font-weight:800;color:#000;border-radius:999px;padding:2px 0;text-align:center}
+.dv{position:relative;height:10px;background:var(--bg3);border-radius:999px}
+.dv i{position:absolute;top:0;height:10px;border-radius:999px}
+.dv i.mid{left:50%;top:-2px;width:2px;height:14px;background:var(--bg5);border-radius:0}
 </style>
 </head>
 <body>
 
 <div class="hdr">
   <div class="hdr-top">
-    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:9px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.20</span>
+    <div class="logo">NFL <span>Slate</span></div><span style="font-family:var(--fm);font-size:12px;color:var(--t3);align-self:flex-end;padding-bottom:3px">v2.21</span>
     <div class="wk"><button id="wPrev">‹</button><div class="lbl" id="wLbl">Week —</div><button id="wNext">›</button></div>
     <div class="spacer"></div>
     <button class="btn pull" id="bPull">↓ Pull odds</button>
@@ -265,8 +338,8 @@ td.u small{display:block;font-size:9.5px;color:var(--t3);font-weight:400}
   <div class="tabs">
     <button class="tab on" data-tab="edges">Edges</button>
     <button class="tab" data-tab="slate">Slate</button>
+    <button class="tab" data-tab="ratings">Team Ratings</button>
     <button class="tab" data-tab="record">Record</button>
-    <button class="tab" data-tab="ratings">Ratings</button>
   </div>
 </div>
 
@@ -399,8 +472,10 @@ const S = { tab:'edges', week:null, weeks:[], games:[], rates:{}, prior:{},
             loading:false, pulling:false, err:null, dataErr:[], game:null, gd:null, gdErr:null,
             roster:{ loaded:false, week:null, byName:new Map(), teams:new Set() },
             logged:new Map(), logErr:null, rec:null, recErr:null, recFilter:'all',
-            mr:null, mrErr:null, rkSort:'pass_off', rkDir:-1 };
+            mr:null, mrErr:null, rkSort:'overall', rkDir:-1, rkView:null };
 
+S.rkView = store.get('nflslate.rkview', 'grid');
+if (!['grid','table','cards'].includes(S.rkView)) S.rkView = 'grid';
 const $ = id => document.getElementById(id);
 const R = (n,d=1) => (n===null||n===undefined||!isFinite(n)) ? null : +(+n).toFixed(d);
 const clamp = (v,a,b) => Math.max(a, Math.min(b,v));
@@ -1335,23 +1410,69 @@ async function load(){
 }
 
 /* ===================================================================== */
-/* RUN/PASS MATCHUP RATINGS — display only. Built nightly from play-by-play */
-/* into data/matchup-ratings-<season>.json (scripts/matchup-ratings.mjs).   */
+/* TEAM RATINGS — display only. Built nightly from play-by-play into       */
+/* data/matchup-ratings-<season>.json (scripts/matchup-ratings.mjs).       */
 /* Opponent-adjusted success rate; nothing here moves a projection or pick. */
 /* ===================================================================== */
-const MR_UNITS = [['rush_off','Run O'], ['rush_def','Run D'], ['pass_off','Pass O'], ['pass_def','Pass D']];
+const MR_UNITS = [['rush_off','Run O','Run offense','run game'], ['rush_def','Run D','Run defense','run defense'],
+                  ['pass_off','Pass O','Pass offense','passing'], ['pass_def','Pass D','Pass defense','pass defense']];
 const UNIT_LBL = { rush:'run', pass:'pass' };
 const ord = n => { n = Math.max(1, n); return n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th','st','nd','rd'][n % 10] || 'th'); };
 const pp = (v, d=1) => v === null || v === undefined ? '—' : (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(d);
-const pctCls = p => p >= 67 ? 'pc-hi' : p <= 33 ? 'pc-lo' : '';
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
 
 /* Not part of the board's health check: a missing ratings file hides the strip
-   and says why on the Ratings tab, but never marks the board unreliable. */
+   and says why on the Team Ratings tab, but never marks the board unreliable. */
 function loadMatchup(){
   dataFile(`matchup-ratings-${SEASON}.json`)
-    .then(d => { S.mr = d; S.mrErr = null; })
+    .then(d => { S.mr = d; S.mrErr = null; _mrRank = null; })
     .catch(e => { S.mr = null; S.mrErr = e.message; })
     .finally(render);
+}
+
+/** Rank 1–32 per unit (1 = best for that unit) and an overall rank from the plain sum. */
+let _mrRank = null;
+function mrRank(){
+  if (_mrRank && _mrRank.src === S.mr) return _mrRank;
+  const teams = Object.keys(S.mr.teams).filter(t => MR_UNITS.every(([u]) => S.mr.teams[t][u]));
+  const r = { src:S.mr, teams, overall:{}, ov:{} };
+  const rankBy = val => { const out = {};
+    for (const t of teams) out[t] = 1 + teams.filter(x => val(x) > val(t) + 1e-9).length;
+    return out; };
+  for (const [u] of MR_UNITS) r[u] = rankBy(t => S.mr.teams[t][u].pp);
+  for (const t of teams) r.ov[t] = +MR_UNITS.reduce((s, [u]) => s + S.mr.teams[t][u].pp, 0).toFixed(1);
+  r.overall = rankBy(t => r.ov[t]);
+  return (_mrRank = r);
+}
+
+/* ---- team badge: logo link from nflverse (ESPN, then Wikipedia), team colours if it fails ---- */
+function teamBadge(t, size){
+  const i = (S.mr && S.mr.team_info && S.mr.team_info[t]) || {};
+  const logos = (i.logos || []).filter(u => /^https:\/\/(a\.espncdn\.com|upload\.wikimedia\.org)\//.test(u));
+  const col = /^#[0-9a-fA-F]{6}$/.test(i.color || '') ? i.color : '#48484a';
+  const col2 = /^#[0-9a-fA-F]{6}$/.test(i.color2 || '') ? i.color2 : '#8e8e93';
+  return `<span class="tb ${logos.length ? '' : 'noimg'}" style="width:${size}px;height:${size}px;--tc:${col};--tc2:${col2};font-size:${Math.round(size*0.36)}px">`
+    + (logos.length ? `<img src="${esc(logos[0])}" data-alt="${esc(logos.slice(1).join(' '))}" alt="" loading="lazy" onerror="tbErr(this)">` : '')
+    + `<b>${esc(t)}</b></span>`;
+}
+function tbErr(img){
+  const alt = (img.dataset.alt || '').split(' ').filter(Boolean);
+  if (alt.length) { img.dataset.alt = alt.slice(1).join(' '); img.src = alt[0]; }
+  else { img.parentNode.classList.add('noimg'); img.remove(); }
+}
+const teamName = t => (S.mr && S.mr.team_info && S.mr.team_info[t] && S.mr.team_info[t].name) || t;
+
+/* Heat: rank 1 = strong orange, middle = grey, 32 = strong blue. */
+function heat(k){
+  const t = (k - 1) / 31;
+  return t < 0.5 ? `rgba(255,159,10,${((0.5 - t) * 2 * 0.82 + 0.08).toFixed(2)})`
+                 : `rgba(10,132,255,${((t - 0.5) * 2 * 0.72 + 0.08).toFixed(2)})`;
+}
+/* Matchup tile shade: orange = the offense has the edge, blue = the defense does. */
+function gapHeat(gap){
+  if (Math.abs(gap) < 1) return 'var(--bg3)';
+  const a = Math.min(0.8, 0.14 + Math.abs(gap) / 8 * 0.66).toFixed(2);
+  return gap > 0 ? `rgba(255,159,10,${a})` : `rgba(10,132,255,${a})`;
 }
 
 /** The four head-to-heads: each offense's run and pass unit against the matching defense.
@@ -1364,7 +1485,9 @@ function matchups(g){
     const O = (S.mr.teams[o] || {})[unit + '_off'], D = (S.mr.teams[d] || {})[unit + '_def'];
     const lg = S.mr.league[unit];
     if (!O || !D || !lg) return null;
+    const rk = mrRank();
     out.push({ off:o, def:d, unit, O, D, lg:lg.sr, lgY:lg.ypp,
+               rO: rk[unit + '_off'][o], rD: rk[unit + '_def'][d],
                proj: lg.sr + O.edge + D.edge, gap: (O.edge + D.edge) * 100,
                projY: lg.ypp + O.ypp_edge + D.ypp_edge });
   }
@@ -1379,9 +1502,13 @@ const gapTxt = v => `${v >= 1 ? '▲' : v <= -1 ? '▼' : ''}${Math.abs(v).toFix
 function matchStrip(g){
   const ms = matchups(g);
   if (!ms) return '';
-  return `<div class="mstrip" data-mx="${g.game_id}" title="Run/pass matchups vs league average — tap for the breakdown">${ms.map(m =>
-    `<div class="mcell ${m.hi ? 'hi' : ''}"><div class="k">${m.off} ${UNIT_LBL[m.unit]}</div>
-      <div class="v">${(m.proj*100).toFixed(0)}%<span class="d ${gapCls(m.gap)}">${gapTxt(m.gap)}</span></div></div>`).join('')}</div>`;
+  return `<div class="mstrip" data-mx="${g.game_id}" title="Run/pass matchups — tap for the breakdown">
+    <div class="mhead"><span>Matchups</span><span class="mkey"><i style="background:rgba(255,159,10,.8)"></i>offense edge<i style="background:rgba(10,132,255,.75)"></i>defense edge</span></div>
+    <div class="mgrid2">${ms.map(m =>
+    `<div class="mcell ${m.hi ? 'hi' : ''}" style="background:${gapHeat(m.gap)}">
+      <div class="k"><b>${m.off} ${UNIT_LBL[m.unit]}</b><span class="d">${gapTxt(m.gap)}</span></div>
+      <div class="big">${(m.proj*100).toFixed(0)}%</div>
+      <div class="r">${ord(m.rO)} vs ${m.def} D ${ord(m.rD)}</div></div>`).join('')}</div></div>`;
 }
 
 /** Biggest mismatch in words, for the game page summary line. */
@@ -1392,15 +1519,15 @@ function matchSummary(g){
 }
 
 function matchBody(g){
-  if (S.mrErr) return `<div class="note">Ratings unavailable: ${S.mrErr}.</div>`;
+  if (S.mrErr) return `<div class="note">Team ratings unavailable: ${esc(S.mrErr)}.</div>`;
   const ms = matchups(g);
   if (!ms) return `<div class="note"><span class="spin"></span> loading…</div>`;
   const k = (S.mr.method && S.mr.method.shrink_games) || { pass:2, rush:3 };
   const rows = (fmtLg, fmtO, fmtD, fmtP) => ms.map(m => `<tr class="${m.hi ? 'hi' : ''}">
-      <td style="font-family:var(--fb);font-weight:600">${m.off} ${UNIT_LBL[m.unit]}<div style="font-weight:400;font-size:10px;color:var(--t3);font-family:var(--fm)">vs ${m.def} D</div></td>
+      <td style="font-weight:600">${m.off} ${UNIT_LBL[m.unit]}<div style="font-weight:400;font-size:12.5px;color:var(--t3)">vs ${m.def} D</div></td>
       <td>${fmtLg(m)}</td>
-      <td class="u">${fmtO(m)}<small>${ord(m.O.pct)} · ${m.O.games}g</small></td>
-      <td class="u">${fmtD(m)}<small>${ord(m.D.pct)} · ${m.D.games}g</small></td>
+      <td class="u">${fmtO(m)}<small>${ord(m.rO)} · ${m.O.games}g</small></td>
+      <td class="u">${fmtD(m)}<small>${ord(m.rD)} · ${m.D.games}g</small></td>
       <td class="hl">${fmtP(m)}</td></tr>`).join('');
   const head = `<tr><th>Matchup</th><th>League</th><th>+ Offense</th><th>+ Defense</th><th>= Proj</th></tr>`;
   const sr = rows(m => (m.lg*100).toFixed(1)+'%', m => pp(m.O.edge*100), m => pp(m.D.edge*100),
@@ -1412,48 +1539,58 @@ function matchBody(g){
     <div class="sec"><h3>Yards per play</h3><div class="rwrap" style="background:none;border:none">
       <table class="mtbl">${head}${yp}</table></div></div>
     <div class="note">Both edges are shown from the offense's side: <b>+ helps the offense</b>. A defense that allows
-      more than average adds; a stingy one subtracts (its own rating on the Ratings tab flips the sign, so + there means stingy).
-      Under each edge: that unit's own percentile (100th = best) and games played. Pass plays include sacks and scrambles; yards per play is per dropback for passing.
-      The orange row is the biggest mismatch in either direction.</div>
-    <div class="note" style="margin-top:7px;color:var(--y)">Pulled toward league average early: each team is treated as having
-      ${k.pass} extra average games for passing and ${k.rush} for rushing, so at 3 games a rating is roughly half its raw size.
-      Unlike the main model, last season is <b>not</b> blended in. Season to date through week ${S.mr.through_week},
-      opponent-adjusted, garbage time (win probability under 10% or over 90%) removed.
-      <b>Display only</b> — these do not move any projection, probability or pick.</div>`;
+      more than average adds; a stingy one subtracts. Under each edge: that unit's rank out of 32 and games played.
+      The orange row is the biggest mismatch in either direction. Pass plays include sacks and scrambles.</div>
+    <div class="note" style="margin-top:8px;color:var(--y)">Early on, every team is pulled toward average as if it had also played
+      ${k.pass} average passing games and ${k.rush} average rushing games — last season is <b>not</b> blended in.
+      Through week ${S.mr.through_week}. <b>Display only</b> — these don't move any projection, probability or pick.
+      <a style="color:var(--g);cursor:pointer" onclick="showRatingsInfo()">How these work ›</a></div>`;
 }
 
 function openMatch(id){
   const g = S.games.find(x => x.game_id === id); if (!g) return;
-  $('dpanel').innerHTML = `<div class="dhead"><h2>${g.away} @ ${g.home} — run/pass</h2><div class="spacer"></div>
-      <button class="btn" onclick="closeDetail()">✕</button></div>${matchBody(g)}
-    <div class="sec" style="margin-top:14px"><a style="color:var(--g);cursor:pointer;font-weight:600;font-size:12.5px"
+  $('dpanel').innerHTML = `<div class="dhead">${teamBadge(g.away, 30)}${teamBadge(g.home, 30)}<h2>${g.away} @ ${g.home} — matchups</h2><div class="spacer"></div>
+      <button class="btn" onclick="closeDetail()" aria-label="Close">✕</button></div>${matchBody(g)}
+    <div class="sec" style="margin-top:16px"><a style="color:var(--g);cursor:pointer;font-weight:600"
       onclick="closeDetail();openGame('${g.game_id}')">Open game page ›</a></div>`;
   $('detail').classList.add('open');
 }
 
+/* ---- Team Ratings tab: Grid (default) · Table · Cards ---- */
+const RK_VIEWS = [['grid','Grid'], ['table','Table'], ['cards','Cards']];
+function rkRows(){
+  const rk = mrRank(), key = S.rkSort, dir = S.rkDir;
+  const val = t => key === 'overall' ? rk.ov[t] : S.mr.teams[t][key].pp;
+  return [...rk.teams].sort((a, b) => key === 'team' ? a.localeCompare(b) * -dir
+    : ((val(a) - val(b)) * dir || a.localeCompare(b)));
+}
+function rkHead(k, l){
+  const on = S.rkSort === k;
+  return `<button type="button" class="rkh ${on ? 'on' : ''}" data-rk="${k}">${l}${on && k !== 'team' ? (S.rkDir < 0 ? ' ↓' : ' ↑') : ''}</button>`;
+}
+
 function renderRatings(){
-  if (S.mrErr) { $('main').innerHTML = `<div class="empty"><b>Ratings aren't available.</b><br><br>${S.mrErr}.<br>
+  if (S.mrErr) { $('main').innerHTML = `<div class="empty"><b>Team ratings aren't available.</b><br><br>${esc(S.mrErr)}.<br>
       They're built by the nightly workflow — run it from the Actions tab if this is new.</div>`; return; }
-  if (!S.mr) { $('main').innerHTML = '<div class="empty"><span class="spin"></span> loading ratings…</div>'; return; }
-  const teams = Object.entries(S.mr.teams).filter(([, v]) => MR_UNITS.every(([u]) => v[u]));
-  const key = S.rkSort, dir = S.rkDir;
-  teams.sort((a, b) => key === 'team' ? a[0].localeCompare(b[0]) * -dir
-    : ((a[1][key].pp - b[1][key].pp) * dir || a[0].localeCompare(b[0])));
-  const th = (k, l) => `<th data-rk="${k}" class="${S.rkSort === k ? 'on' : ''}">${l}${S.rkSort === k ? (k === 'team' ? '' : dir < 0 ? ' ↓' : ' ↑') : ''}</th>`;
-  const cell = u => `<td class="u"><span class="${pctCls(u.pct)}">${pp(u.pp)}</span><small>${ord(u.pct)}</small></td>`;
-  const lg = S.mr.league;
-  $('main').innerHTML = `<div class="sechead">Run/pass ratings · through week ${S.mr.through_week}
-      <span style="float:right;text-transform:none;letter-spacing:0">tap a team</span></div>
-    <div class="note" style="margin-bottom:10px">Opponent-adjusted success rate vs league average, in percentage points.
-      <b>+ is good for that unit</b> — an offense that succeeds more, a defense that allows less.
-      Small number is the percentile (100th = best). League: run ${(lg.rush.sr*100).toFixed(1)}%, pass ${(lg.pass.sr*100).toFixed(1)}%.
-      Pulled toward average early; display only.</div>
-    <div class="rwrap"><table class="rtbl rk">
-      <tr><th>#</th>${th('team','Team')}${MR_UNITS.map(([k, l]) => th(k, l)).join('')}<th>G</th></tr>
-      ${teams.map(([t, v], i) => `<tr data-team="${t}"><td>${i+1}</td><td class="nm">${t}</td>
-        ${MR_UNITS.map(([u]) => cell(v[u])).join('')}<td>${v.pass_off.games}</td></tr>`).join('')}
-    </table></div>`;
-  document.querySelectorAll('[data-rk]').forEach(el => el.onclick = () => {
+  if (!S.mr) { $('main').innerHTML = '<div class="empty"><span class="spin"></span> loading team ratings…</div>'; return; }
+  const view = S.rkView, rk = mrRank();
+  const head = `<div class="rkhead">
+      <div style="flex:1;min-width:220px"><h1 class="rkt">Team Ratings</h1>
+        <div class="rks">Who moves the ball and who stops it · through week ${S.mr.through_week}</div></div>
+      <button type="button" class="btn" onclick="showRatingsInfo()">ⓘ How these work</button>
+      <div class="seg" role="group" aria-label="View">${RK_VIEWS.map(([v, l]) =>
+        `<button type="button" data-view="${v}" class="${view === v ? 'on' : ''}" aria-pressed="${view === v}">${l}</button>`).join('')}</div>
+    </div>`;
+  let body = '';
+  if (view === 'table') body = ratingsTable(rk);
+  else if (view === 'cards') body = ratingsCards(rk);
+  else body = ratingsGrid(rk);
+  $('main').innerHTML = `<div class="rkpage">${head}${body}
+    <div class="note" style="margin-top:14px">Early-season numbers are pulled toward average. Display only — these don't change any projection or pick.</div></div>`;
+  document.querySelectorAll('[data-view]').forEach(el => el.onclick = () => {
+    S.rkView = el.dataset.view; store.set('nflslate.rkview', S.rkView); render(); });
+  document.querySelectorAll('[data-rk]').forEach(el => el.onclick = ev => {
+    ev.stopPropagation();
     const k = el.dataset.rk;
     if (S.rkSort === k) S.rkDir = -S.rkDir; else { S.rkSort = k; S.rkDir = -1; }
     render();
@@ -1461,31 +1598,134 @@ function renderRatings(){
   document.querySelectorAll('[data-team]').forEach(el => el.onclick = () => openTeamRatings(el.dataset.team));
 }
 
+function ratingsGrid(rk){
+  const teams = rkRows();
+  return `<div class="hkey"><span>Best</span><i></i><span>Worst</span><em>Big number = rank out of 32 · small = points vs average</em></div>
+    <div class="hg hg-h"><div></div>${rkHead('team','Team')}${MR_UNITS.map(([u, s, l]) => rkHead(u, `<span class="lg">${l}</span><span class="sm">${s}</span>`)).join('')}${rkHead('overall','Overall')}</div>
+    ${teams.map((t, i) => { const v = S.mr.teams[t];
+      return `<div class="hg hg-r" data-team="${t}" role="button" tabindex="0">
+        <div class="hn">${i + 1}</div>
+        <div class="ht">${teamBadge(t, 30)}<span class="ab">${t}</span></div>
+        ${MR_UNITS.map(([u]) => `<div class="hc" style="background:${heat(rk[u][t])}"><b>${ord(rk[u][t])}</b><span>${pp(v[u].pp)}</span></div>`).join('')}
+        <div class="hc ov" style="border-color:${rk.overall[t] <= 8 ? 'var(--g)' : rk.overall[t] >= 25 ? 'var(--bl)' : 'var(--b2)'}"><b>${ord(rk.overall[t])}</b><span>${pp(rk.ov[t])}</span></div>
+      </div>`; }).join('')}`;
+}
+
+function ratingsTable(rk){
+  const teams = rkRows();
+  const cell = (u, t) => { const x = S.mr.teams[t][u], k = rk[u][t];
+    const col = x.pp >= 1 ? 'var(--gr)' : x.pp <= -1 ? 'var(--r)' : 'var(--t2)';
+    return `<td><div class="tc"><div class="tbar"><i style="width:${Math.round(100*(33-k)/32)}%;background:${col}"></i></div>
+      <small>${ord(k)}</small><b style="color:${col}">${pp(x.pp)}</b></div></td>`; };
+  return `<div class="rwrap"><table class="rtbl rk2">
+    <tr><th></th><th>${rkHead('team','Team')}</th>
+      <th colspan="2" class="grp">Run game</th><th colspan="2" class="grp">Pass game</th><th>${rkHead('overall','Overall')}</th><th>G</th></tr>
+    <tr class="sub"><th>#</th><th></th>${MR_UNITS.map(([u, , l]) => `<th>${rkHead(u, l.split(' ')[1].replace(/^./, c => c.toUpperCase()))}</th>`).join('')}<th></th><th></th></tr>
+    ${teams.map((t, i) => `<tr data-team="${t}"><td class="n">${i + 1}</td>
+      <td class="nm"><span class="ht">${teamBadge(t, 28)}<span class="ab">${t}</span></span></td>
+      ${MR_UNITS.map(([u]) => cell(u, t)).join('')}
+      <td><b>${pp(rk.ov[t])}</b> <small style="color:var(--t3)">${ord(rk.overall[t])}</small></td>
+      <td style="color:var(--t3)">${S.mr.teams[t].pass_off.games}</td></tr>`).join('')}
+    </table></div>
+    <div class="note" style="margin-top:8px"><b style="color:var(--gr)">Green</b> is good for that team, <b style="color:var(--r)">red</b> is bad — on offense and defense.
+      The bar is rank: fuller = better. Tap a column to sort.</div>`;
+}
+
+const GRADES = [['Elite', 4, '#4cd98a'], ['Good', 10, '#a6e3b8'], ['Avg', 22, '#c7c7cc'], ['Weak', 28, '#ffb3ad'], ['Poor', 32, '#ff6961']];
+const grade = k => GRADES.find(g => k <= g[1]);
+function teamBlurb(t, rk){
+  const us = MR_UNITS.map(([u, , , w]) => ({ w, k: rk[u][t] }));
+  const best = [...us].sort((a, b) => a.k - b.k)[0], worst = [...us].sort((a, b) => b.k - a.k)[0];
+  if (best.k <= 10 && worst.k >= 23) return `Strong ${best.w}, shaky ${worst.w}`;
+  if (best.k <= 10) return `Best at: ${best.w}`;
+  if (worst.k >= 23) return `Watch: weak ${worst.w}`;
+  return 'Middle of the pack everywhere';
+}
+function ratingsCards(rk){
+  const teams = [...rk.teams].sort((a, b) => rk.overall[a] - rk.overall[b] || a.localeCompare(b));
+  return `<div class="gkey">${GRADES.map(([g, max, c], i) => `<span><b style="background:${c}">${g}</b>${
+      i === 0 ? 'top 4' : i === GRADES.length - 1 ? 'bottom 4' : `${ord(GRADES[i-1][1] + 1)}–${ord(max)}`}</span>`).join('')}
+      <em>Bars grow right when a team beats average, left when it falls short. Sorted by overall.</em></div>
+    <div class="scgrid">${teams.map(t => `<div class="sc" data-team="${t}" role="button" tabindex="0">
+      <div class="sch">${teamBadge(t, 40)}<div><div class="scn">${t}</div><div class="sco">${ord(rk.overall[t])} overall</div></div></div>
+      <div class="scb">${teamBlurb(t, rk)}</div>
+      ${MR_UNITS.map(([u, s]) => { const v = S.mr.teams[t][u].pp, g = grade(rk[u][t]), half = Math.min(Math.abs(v) / 11, 1) * 50;
+        return `<div class="scr"><span>${s}</span><div class="dv"><i class="mid"></i><i style="left:${v >= 0 ? 50 : 50 - half}%;width:${Math.max(half, 1.5)}%;background:${g[2]}"></i></div>
+          <b style="background:${g[2]}">${g[0]}</b></div>`; }).join('')}
+    </div>`).join('')}</div>`;
+}
+
 function openTeamRatings(t){
   const v = S.mr && S.mr.teams[t]; if (!v) return;
-  const k = (S.mr.method && S.mr.method.shrink_games) || { pass:2, rush:3 };
-  const rows = MR_UNITS.map(([u, l]) => {
-    const x = v[u], def = u.endsWith('_def'), unit = u.split('_')[0];
+  const rk = mrRank(), k = (S.mr.method && S.mr.method.shrink_games) || { pass:2, rush:3 };
+  const rows = MR_UNITS.map(([u, , l]) => {
+    const x = v[u], def = u.endsWith('_def');
     const yGood = def ? -x.ypp_edge : x.ypp_edge;
-    return `<tr><td style="font-family:var(--fb);font-weight:600">${l}</td>
-      <td class="hl"><span class="${pctCls(x.pct)}">${pp(x.pp)}</span></td><td>${ord(x.pct)}</td>
+    const col = x.pp >= 1 ? 'var(--gr)' : x.pp <= -1 ? 'var(--r)' : 'var(--t2)';
+    return `<tr><td style="font-weight:600">${l}</td>
+      <td><b style="color:${col}">${pp(x.pp)}</b></td><td>${ord(rk[u][t])}</td>
       <td>${(x.sr*100).toFixed(1)}%</td>
       <td>${x.ypp.toFixed(2)} <span class="${yGood >= .1 ? 'up' : yGood <= -.1 ? 'dn' : 'flat'}">(${pp(yGood, 2)})</span></td>
       <td style="color:var(--t3)">${pp(x.raw_pp)}</td><td>${x.games}</td><td>${x.plays}</td></tr>`;
   }).join('');
-  $('dpanel').innerHTML = `<div class="dhead"><h2>${t} — run/pass ratings</h2><div class="spacer"></div>
-      <button class="btn" onclick="closeDetail()">✕</button></div>
+  $('dpanel').innerHTML = `<div class="dhead">${teamBadge(t, 36)}<h2>${esc(teamName(t))}</h2><div class="spacer"></div>
+      <span style="font-family:var(--fc);font-size:20px;font-weight:700;color:var(--g)">${ord(rk.overall[t])} overall</span>
+      <button class="btn" onclick="closeDetail()" aria-label="Close">✕</button></div>
+    <div class="note" style="margin-bottom:12px;color:var(--t)">${teamBlurb(t, rk)}.</div>
     <div class="sec"><div class="rwrap" style="background:none;border:none"><table class="mtbl">
-      <tr><th>Unit</th><th>Rating</th><th>Pctl</th><th>Adj SR</th><th>Adj yds/play</th><th>Raw</th><th>G</th><th>Plays</th></tr>
+      <tr><th>Unit</th><th>Rating</th><th>Rank</th><th>Success rate</th><th>Yards/play</th><th>Before pull</th><th>G</th><th>Plays</th></tr>
       ${rows}</table></div></div>
-    <div class="note"><b>Rating</b> is opponent-adjusted success rate vs league average in points, + good for that unit.
-      <b>Adj SR</b> and <b>adj yds/play</b> are what the unit produces (offense) or allows (defense) against an average opponent;
-      the number in brackets is vs average, + good. <b>Raw</b> is the rating before the pull toward average.
-      Pass plays include sacks and scrambles.</div>
-    <div class="note" style="margin-top:7px;color:var(--y)">Early-season ratings are pulled toward league average —
-      ${k.pass} extra average games for passing, ${k.rush} for rushing — and last season is not blended in, unlike the main model.
-      Through week ${S.mr.through_week}. Display only: these don't feed projections or picks.</div>`;
+    <div class="note"><b>Rating</b>: points better (+) or worse (−) than an average team, after adjusting for opponents.
+      <b>Success rate</b> and <b>yards/play</b> are what this unit produces (offense) or allows (defense) against an average opponent;
+      brackets show the gap from average, + good. <b>Before pull</b> is the rating before the early-season pull toward average
+      (${k.pass} extra average games for passing, ${k.rush} for rushing). Through week ${S.mr.through_week}.</div>
+    <div class="note" style="margin-top:8px"><a style="color:var(--g);cursor:pointer" onclick="closeDetail();showRatingsInfo()">How these work ›</a></div>`;
   $('detail').classList.add('open');
+}
+
+/* Plain-English explanation, from the ⓘ button on the Team Ratings tab. */
+function showRatingsInfo(){
+  const k = (S.mr && S.mr.method && S.mr.method.shrink_games) || { pass:2, rush:3 };
+  const keep = n => Math.round(100 * 3 / (3 + n));
+  /* Worked example from live numbers: the league's biggest run mismatch this week, else CLE vs PIT. */
+  let ex = '';
+  const pick = (() => { let best = null;
+    for (const g of S.games || []) for (const m of (matchups(g) || [])) if (m.unit === 'rush' && (!best || Math.abs(m.gap) > Math.abs(best.gap))) best = m;
+    if (best) return best;
+    const T = S.mr && S.mr.teams; if (!T || !T.CLE || !T.PIT) return null;
+    return { off:'CLE', def:'PIT', lg:S.mr.league.rush.sr, O:T.CLE.rush_off, D:T.PIT.rush_def, proj:S.mr.league.rush.sr + T.CLE.rush_off.edge + T.PIT.rush_def.edge }; })();
+  if (pick) { const o = pick.O.edge * 100, d = pick.D.edge * 100;
+    ex = `<p>Example: ${pick.off} running vs ${pick.def}'s run defense = ${(pick.lg*100).toFixed(1)}% ${o < 0 ? '−' : '+'} ${Math.abs(o).toFixed(1)}
+      (${pick.off} runs ${o < 0 ? 'worse' : 'better'} than average) ${d < 0 ? '−' : '+'} ${Math.abs(d).toFixed(1)}
+      (${pick.def} ${d < 0 ? 'stops the run better' : 'allows more on the ground'} than average) = <b>${(pick.proj*100).toFixed(1)}%</b>.</p><p>`; }
+  else ex = '<p>';
+  showModal(`<h2>How Team Ratings work</h2>
+  <h4>What we're measuring: staying on schedule</h4>
+  <p>A play is a <b>success</b> if it keeps the offense on track:</p>
+  <ul><li><b>1st down:</b> gains at least 40% of the yards needed (4 of 10)</li>
+      <li><b>2nd down:</b> gains at least 60% of what's left</li>
+      <li><b>3rd or 4th down:</b> picks up the first down</li></ul>
+  <p>Runs and passes count; sacks and QB scrambles count as passes. Kneels, spikes, 2-point tries and garbage time
+     (when a team's win chance is under 10% or over 90%) are left out.</p>
+  <h4>Step 1 · Raw success rate</h4>
+  <p>The share of each team's plays that were successes, game by game.</p>
+  <h4>Step 2 · Adjust for who they played</h4>
+  <p>Each game is compared with what that opponent usually allows, using the opponent's <i>other</i> games. Running well
+     against a great run defense counts for more than running well against a bad one.</p>
+  <p><code>adjusted game = team's rate that game − (opponent's usual rate − league average)</code></p>
+  <p>Offense and defense ratings depend on each other, so this repeats until the numbers settle.</p>
+  <h4>Step 3 · Don't overreact early</h4>
+  <p>Every team is treated as if it also played a few perfectly average games: ${k.pass} for passing, ${k.rush} for running.</p>
+  <p><code>rating = adjusted edge × games ÷ (games + ${k.pass})</code> for passing, <code>+ ${k.rush}</code> for running</p>
+  <p>After 3 games, a passing rating keeps ${keep(k.pass)}% of its size and a running rating keeps ${keep(k.rush)}%. The pull fades as the season goes on.</p>
+  <h4>Step 4 · Rank them</h4>
+  <p>1st to 32nd in each area. <b>Overall</b> is the four ratings simply added together.</p>
+  <h4>Matchups on the slate cards</h4>
+  <p><code>projected success = league average + offense edge + defense edge</code></p>
+  ${ex}Orange tiles mean the offense has the edge, blue means the defense does; the outlined tile is the biggest mismatch.</p>
+  <h4>What it's not</h4>
+  <p>These don't change any projection, prop or pick. They're a quick read on team strengths.</p>
+  <div style="margin-top:16px"><button class="btn" onclick="closeModal()">Close</button></div>`);
 }
 
 /* ===================================================================== */
@@ -1810,7 +2050,7 @@ function renderRecord(){
     if (c.line !== p.line) return `${c.line} <span style="color:${upColor(p.beat===null?null:p.beat?1:-1)}">(${sgn(p.move,1)})</span>`;
     return am(c.price); };
   const prows = list.map(p => `<tr>
-      <td class="nm">${p.bet?'<span class="star">★</span> ':''}${p.player}<div style="font-family:var(--fm);font-weight:400;font-size:10px;color:var(--t3)">wk ${p.week} · ${p.game||''}</div></td>
+      <td class="nm">${p.bet?'<span class="star">★</span> ':''}${p.player}<div style="font-family:var(--fm);font-weight:400;font-size:12.5px;color:var(--t3)">wk ${p.week} · ${p.game||''}</div></td>
       <td><span class="e-dir ${p.dir}">${p.dir==='over'?'O':'U'} ${p.line}</span> ${MKT[p.market]?MKT[p.market].label:p.market}</td>
       <td>${am(p.price)}</td>
       <td>${p.p!=null?Math.round(p.p*100):'—'}% / ${p.fair!=null?Math.round(p.fair*100):'—'}%</td>
@@ -1853,12 +2093,12 @@ function openEdgeObj(e){
 
   $('dpanel').innerHTML = `
     <div class="dhead"><h2>${p.player}</h2><div class="spacer"></div>
-      <div style="font-family:var(--fm);font-size:17px;color:${evColor(b.ev)}">${b.ev>0?'+':''}${R(b.ev,1)}%</div>
+      <div style="font-family:var(--fm);font-size:19px;color:${evColor(b.ev)}">${b.ev>0?'+':''}${R(b.ev,1)}%</div>
       ${betBtnHtml(e)}
       <button class="btn" onclick="closeDetail()">✕</button></div>
 
     <div class="sec"><h3>The claim</h3>
-      <div class="note"><b style="color:var(--t);font-size:14px">${b.dir.toUpperCase()} ${p.line} ${MKT[p.market].label}</b>
+      <div class="note"><b style="color:var(--t);font-size:16px">${b.dir.toUpperCase()} ${p.line} ${MKT[p.market].label}</b>
         at ${am(b.price)}${b.book?' ('+b.book+')':''} · ${p.game}<br>
         Model projects <b style="color:var(--g)">${R(pj.mean,1)}</b>${pj.dist==='poisson'?'':', standard deviation '+R(pj.sd,1)}, scored as a ${pj.dist} outcome.
         Raw model probability is ${Math.round((b.dir==='over'?e.pRaw:1-e.pRaw)*100)}%, but it stands on only
@@ -2003,8 +2243,8 @@ function matchChart(label, stat, offT, defT){
     <svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${oLbl} versus ${dLbl}">
       ${lg !== null ? `<line x1="${px}" x2="${W-px}" y1="${Y(lg)}" y2="${Y(lg)}" stroke="#8e8e93" stroke-dasharray="3 3" stroke-width="1"/>` : ''}
       <line x1="${divX}" x2="${divX}" y1="3" y2="${H-3}" stroke="#48484a" stroke-width="1"/>
-      <text x="${divX-4}" y="10" text-anchor="end" font-size="9" fill="#8e8e93">${PRIOR_SEASON}</text>
-      <text x="${divX+4}" y="10" font-size="9" fill="#ff9f0a">${SEASON}</text>
+      <text x="${divX-4}" y="10" text-anchor="end" font-size="11" fill="#8e8e93">${PRIOR_SEASON}</text>
+      <text x="${divX+4}" y="10" font-size="11" fill="#ff9f0a">${SEASON}</text>
       ${line(o0, X0, '#ff9f0a', .22, 1.4)}${line(d0, X0, '#0a84ff', .22, 1.4)}
       ${line(o1, X1, '#ff9f0a', 1, 2.4)}${line(d1, X1, '#0a84ff', 1, 2.4)}
       ${dots(o0, X0, '#ff9f0a', .3, 2.2, PRIOR_SEASON, oLbl)}${dots(d0, X0, '#0a84ff', .3, 2.2, PRIOR_SEASON, dLbl)}
@@ -2079,7 +2319,7 @@ function injuriesBody(g, list){
       ${xs.length ? xs.map(i => `<div class="irow">
           <span class="st ${i.tier.cls}" title="${i.tier.label}">${i.tier.tag}</span>
           <span style="flex:1">${i.position} ${i.name}${i.modeled?' <span class="bdg info" style="margin-left:4px">in projections</span>':''}</span>
-          <span style="color:var(--t3);font-size:11.5px;font-family:var(--fm)">${i.injury && !i.tier.rest ? i.injury.toLowerCase()+' · ' : ''}${i.side} ${Math.round(i.snap*100)}%</span>
+          <span style="color:var(--t3);font-size:14px;font-family:var(--fm)">${i.injury && !i.tier.rest ? i.injury.toLowerCase()+' · ' : ''}${i.side} ${Math.round(i.snap*100)}%</span>
         </div>`).join('') : '<div class="note">No regulars on the report.</div>'}
     </div>`;
   };
@@ -2125,7 +2365,7 @@ function propsBody(g){
   return _gameRows.map((e,i) => {
     const t = tag.get(e), b = e.best;
     return `<div class="prow" data-i="${i}">
-      <span style="flex:1">${e.prop.player} <span style="color:var(--t3);font-size:11px">${MKT[e.prop.market].label}</span>
+      <span style="flex:1">${e.prop.player} <span style="color:var(--t3);font-size:13.5px">${MKT[e.prop.market].label}</span>
         ${t==='edge'?`<span class="e-dir ${b.dir}" style="margin-left:4px">${b.dir.toUpperCase()} · +${R(b.ev,1)}% EV</span>`
           : t ? `<span class="bdg ${t==='quarantined'?'bad':''}" style="margin-left:4px">${t}</span>` : ''}</span>
       <span style="font-family:var(--fm);color:var(--t2);width:52px;text-align:right">${e.prop.line}</span>
@@ -2167,7 +2407,7 @@ function renderGame(){
       <div class="note" style="margin-top:8px">Data confidence ${Math.round(conf*100)}%.${ol.length?' O-line on the report — '+ol.join(' · '):''}</div></div>
     ${weatherLine(g, p)}
     ${gx('charts', 'Matchups', 'rushing · passing · points', chartsBody(g))}
-    ${gx('mx', 'Run/pass ratings', matchSummary(g), matchBody(g))}
+    ${gx('mx', 'Team ratings matchup', matchSummary(g), matchBody(g))}
     ${gx('inj', 'Notable injuries', !S.gd && !S.gdErr ? '…' : injSum, injuriesBody(g, inj))}
     ${gx('props', 'Props in this game', props ? `${props} posted${nEdge?` · ${nEdge} edge${nEdge>1?'s':''}`:''}` : 'no odds', pb)}
   </div>`;
@@ -2356,16 +2596,13 @@ $('bGuide').onclick = () => showModal(`<h2>How this works</h2>
      bright ${SEASON}, dashed league average. Tap a point for the week and opponent. None of this moves
      the projections; it's context for reading them.</p>
 
-  <h4>Run/pass ratings</h4>
-  <p>The <b>Ratings</b> tab and the four-cell strip on each slate card show opponent-adjusted
-     <b>success rate</b>: the share of plays that stay on schedule (1st down: 40% of the distance,
-     2nd: 60%, 3rd/4th: convert). Each game is judged against what that opponent usually allows or produces,
-     so a run game that looked great against a bad defense gets marked down. Garbage time (win probability
-     under 10% or over 90%), kneels, spikes and two-point tries are left out; pass plays include sacks and scrambles.</p>
-  <p>On a card, each cell is one offense against the matching defense: projected success rate =
-     league average + offense edge + defense edge, with the gap from average beside it. The orange cell is the
-     biggest mismatch. Tap the strip for the breakdown. Early on, every team is pulled toward average as if it had
-     2 extra average passing games and 3 extra rushing games — and unlike the main model, last season isn't blended in.
+  <h4>Team Ratings</h4>
+  <p>The <b>Team Ratings</b> tab ranks every team's run offense, run defense, pass offense and pass defense by
+     opponent-adjusted <b>success rate</b> — how often plays keep the offense on schedule. Switch between Grid,
+     Table and Cards with the View buttons; <b>ⓘ How these work</b> on that tab explains the formula step by step.</p>
+  <p>On each slate card, the four shaded tiles are one offense against the matching defense: the offense's rank vs the
+     defense's rank, then the projected success rate and its gap from average. <b>Orange</b> = the offense has the edge,
+     <b>blue</b> = the defense does; the outlined tile is the biggest mismatch. Tap them for the breakdown.
      <b>Display only</b>: these don't move any projection or pick yet.</p>
 
   <h4>Badges</h4>
@@ -2411,6 +2648,7 @@ $('bGuide').onclick = () => showModal(`<h2>How this works</h2>
   <div style="margin-top:14px"><button class="btn" onclick="closeModal()">Close</button></div>`);
 
 document.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target && e.target.dataset && e.target.dataset.team) { e.preventDefault(); e.target.click(); return; }
   if (e.key === 'Escape'){
     const layered = $('detail').classList.contains('open') || $('modal').classList.contains('open');
     closeDetail(); closeModal();
