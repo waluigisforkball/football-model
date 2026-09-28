@@ -23,7 +23,7 @@ import vm from 'node:vm';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
-import { parsePbp, matchupRatings } from './matchup-ratings.mjs';
+import { parsePbp, matchupRatings, teamInfo } from './matchup-ratings.mjs';
 
 const ROOT    = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT     = path.join(ROOT, 'data');
@@ -214,7 +214,12 @@ async function matchupFile(season) {
     if (!r.ok) throw new Error(`upstream ${r.status} for play_by_play_${season}.csv.gz`);
     buf = Buffer.from(await r.arrayBuffer());
   }
-  return matchupRatings(parsePbp(zlib.gunzipSync(buf).toString('utf8')), season);
+  const out = matchupRatings(parsePbp(zlib.gunzipSync(buf).toString('utf8')), season);
+  // Names, colours and logo links for the Team Ratings tab. Cosmetic: a failure here
+  // never costs the ratings themselves — the page falls back to plain abbreviations.
+  try { out.team_info = teamInfo(W.parseCSV(await text('teams/teams_colors_logos.csv')), new Set(Object.keys(out.teams))); }
+  catch (e) { console.log('  (team colours/logos skipped: ' + e.message + ')'); }
+  return out;
 }
 
 async function statsThroughWeek(season) {
